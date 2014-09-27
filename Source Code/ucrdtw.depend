@@ -1,0 +1,8 @@
+# depslib dependency file v1.0
+1411843738 source:/home/pvnick/Downloads/ucrsuite/Source Code/main.cpp
+	<stdio.h>
+	<stdlib.h>
+	<math.h>
+	<time.h>
+	<iostream>
+
