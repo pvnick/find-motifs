@@ -284,7 +284,7 @@ double lb_keogh_data_cumulative(int* order, double *tz, double *qo, double *cb, 
 /// A,B: data and query, respectively
 /// cb : cummulative bound used for early abandoning
 /// r  : size of Sakoe-Chiba warpping band
-double dtw(double* A, double* B, double *cb, int m, int r, double bsf = INF)
+double dtw(double* data, double* query, double *cb, int m, int r, double bsf = INF)
 {
 
     double *cost;
@@ -323,7 +323,7 @@ double dtw(double* A, double* B, double *cb, int m, int r, double bsf = INF)
             else                      z = cost_prev[k];
 
             /// Classic DTW calculation
-            cost[k] = min( min( x, y) , z) + dist(A[i],B[j]);
+            cost[k] = min( min( x, y) , z) + dist(data[i],B[j]);
 
             /// Find minimum cost in row for early abandoning (possibly to use column instead of row).
             if (cost[k] < min_cost)

@@ -11,7 +11,9 @@
 				<Option object_output="obj/Debug/" />
 				<Option type="1" />
 				<Option compiler="gcc" />
+				<Option parameters='oximetry.txt &quot;/home/pvnick/oximetry.txt&quot; 1663231 0.05' />
 				<Compiler>
+					<Add option="-std=c++11" />
 					<Add option="-g" />
 				</Compiler>
 			</Target>
@@ -21,7 +23,10 @@
 				<Option type="1" />
 				<Option compiler="gcc" />
 				<Compiler>
-					<Add option="-O2" />
+					<Add option="-march=nocona" />
+					<Add option="-fexpensive-optimizations" />
+					<Add option="-O3" />
+					<Add option="-std=c++11" />
 				</Compiler>
 				<Linker>
 					<Add option="-s" />
@@ -32,6 +37,7 @@
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
 		</Compiler>
+		<Unit filename="find_motifs.h" />
 		<Unit filename="main.cpp" />
 		<Extensions>
 			<code_completion />
