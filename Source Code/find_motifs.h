@@ -33,6 +33,7 @@
 #include <fstream>
 #include <string>
 #include <memory>
+#include <cassert>
 
 #define min(x,y) ((x)<(y)?(x):(y))
 #define max(x,y) ((x)>(y)?(x):(y))
@@ -40,14 +41,18 @@
 
 #define INF 1e20       //Pseudo Infitinte number for this code
 
+//hardcoded values to prevent memory allocation
+#define TIME_SERIES_LEN 1663231
+#define QUERY_LEN 100
+#define WARPING_WINDOW 0.05
+#define WARPING_r (WARPING_WINDOW <= 1) ? (const int)(WARPING_WINDOW * QUERY_LEN) : (const int)WARPING_WINDOW
+#define SERIES_FILEPATH "/home/pvnick/oximetry.txt"
+
 using namespace std;
 
 class MotifFinder {
 private:
     double* time_series;
-    unsigned int time_series_len;
-    size_t query_len;
-    int warping_r;
 
     class LemireEnvelope {
     private:
@@ -178,9 +183,12 @@ private:
         double* lower;
         double* upper;
         LemireEnvelope() = default;
-        LemireEnvelope(double* t, int len, int r) {
-            lower = new double[len];
-            upper = new double[len];
+        LemireEnvelope(double* t, int r) {
+            lower = new double[QUERY_LEN];
+            assert(lower != nullptr);
+            upper = new double[QUERY_LEN];
+            assert(upper != nullptr);
+            lower_upper_lemire(t, QUERY_LEN, r, lower, upper);
         }
         ~LemireEnvelope() {
             delete[] upper;
@@ -190,22 +198,21 @@ private:
 
     class CacheEntry {
     public:
-        double* series_normalized;
-        double* series_window;
         unsigned int time_series_pos;
+        double series_normalized[QUERY_LEN];
+        double* series_window;
         double mean;
         double stddev;
         unsigned int fragment_length;
         LemireEnvelope lemire_envelope;
-        CacheEntry(double* time_series, unsigned int series_len, unsigned int position, unsigned int cache_window_length, int warping_r):
+        CacheEntry(double* time_series, unsigned int position):
             time_series_pos(position),
+            series_window(time_series + time_series_pos),
             mean(0),
             stddev(0)
         {
-            series_window = time_series + position;
-            series_normalized = new double[cache_window_length];
             double ex = 0, ex2 = 0;
-            for (fragment_length = 0; fragment_length + position != series_len && fragment_length != cache_window_length; ++fragment_length) {
+            for (fragment_length = 0; fragment_length + position != TIME_SERIES_LEN && fragment_length != QUERY_LEN; ++fragment_length) {
                 double d = series_window[fragment_length];
                 series_normalized[fragment_length] = d;
                 ex += d;
@@ -217,49 +224,37 @@ private:
             for(int i = 0; i != fragment_length; i++)
                  series_normalized[i] = (series_normalized[i] - mean)/stddev;
 
-            lemire_envelope = LemireEnvelope(time_series + position, cache_window_length, warping_r);
+            lemire_envelope = LemireEnvelope(time_series + position, WARPING_r);
         }
-        ~CacheEntry() {
-            delete[] series_normalized;
-        }
+        ~CacheEntry() {}
     };
     CacheEntry* cache; //holds a cache entry at each position within the time series
 public:
 
-    MotifFinder(std::string time_series_file_path, unsigned int series_len, unsigned int query_length, double warping_window):
-        time_series_len(series_len),
-        query_len(query_length)
-    {
+    MotifFinder() {
         std::cout << "Initializing motif finder engine" << std::endl;
-        double R = warping_window;
-        if (R<=1)
-            warping_r = floor(R*query_len);
-        else
-            warping_r = floor(R);
-
         std::cout << "Reading time series data file" << std::endl;
-        std::ifstream in(time_series_file_path);
-        time_series = new double[time_series_len + 1];
-        double point;
-        for (int i = 0; in >> point; ++i)
-            time_series[i] = point;
+        std::ifstream in(SERIES_FILEPATH);
+        int i;
+        time_series = new double[TIME_SERIES_LEN];
+        while (i < TIME_SERIES_LEN && (in >> time_series[i++]));
         in.close();
         std::cout << "Caching reusable data" << std::endl;
         std::allocator<CacheEntry> cache_alloc;
-        cache = cache_alloc.allocate(time_series_len);
-        for (int i = 0; i != time_series_len; ++i) {
-            cache_alloc.construct(cache + i, time_series, time_series_len, i, query_length, warping_r);
+        cache = cache_alloc.allocate(TIME_SERIES_LEN);
+        for (int i = 0; i != TIME_SERIES_LEN; ++i) {
+            cache_alloc.construct(cache + i, time_series, i);
             if ((i % 100000) == 0) {
-                std::cout << i << "/" << time_series_len << " (" << ((float)i / time_series_len * 100) << "% complete)" << std::endl;
+                std::cout << i << "/" << TIME_SERIES_LEN << " (" << ((float)i / TIME_SERIES_LEN * 100) << "% complete)" << std::endl;
             }
         }
     }
 
     ~MotifFinder() {
         std::allocator<CacheEntry> cache_alloc;
-        for (int i = 0; i != time_series_len; ++i)
+        for (int i = 0; i != TIME_SERIES_LEN; ++i)
             cache_alloc.destroy(cache + i);
-        cache_alloc.deallocate(cache, time_series_len);
+        cache_alloc.deallocate(cache, TIME_SERIES_LEN);
         delete[] time_series;
     }
 
@@ -381,44 +376,45 @@ public:
     /// However, because of z-normalization the top and bottom cannot give siginifant benefits.
     /// And using the first and last points can be computed in constant time.
     /// The prunning power of LB_Kim is non-trivial, especially when the query is not long, say in length 128.
-    double lb_kim_hierarchy(double *t, double *q, int j, int len, double mean, double stddev, double bsf = INF)
-    {
+    double lb_kim_hierarchy(const CacheEntry& q_cache, const CacheEntry& c_cache, int len, double bsf = INF) const {
         /// 1 point at front and back
         double d, lb;
-        double x0 = (t[j] - mean) / stddev;
-        double y0 = (t[(len-1+j)] - mean) / stddev;
-        lb = dist(x0,q[0]) + dist(y0,q[len-1]);
+        double x0 = c_cache.series_normalized[0];
+        double y0 = c_cache.series_normalized[len - 1];
+        lb = dist(x0, q_cache.series_normalized[0]) + dist(y0, q_cache.series_normalized[len - 1]);
         if (lb >= bsf)   return lb;
 
         /// 2 points at front
-        double x1 = (t[(j+1)] - mean) / stddev;
-        d = min(dist(x1,q[0]), dist(x0,q[1]));
-        d = min(d, dist(x1,q[1]));
+        double x1 = c_cache.series_normalized[1];
+        d = min(dist(x1, q_cache.series_normalized[0]), dist(x0, q_cache.series_normalized[1]));
+        d = min(d, dist(x1, q_cache.series_normalized[1]));
         lb += d;
         if (lb >= bsf)   return lb;
 
         /// 2 points at back
-        double y1 = (t[(len-2+j)] - mean) / stddev;
-        d = min(dist(y1,q[len-1]), dist(y0, q[len-2]) );
-        d = min(d, dist(y1,q[len-2]));
+        double y1 = c_cache.series_normalized[len - 2];
+        d = min(dist(y1, q_cache.series_normalized[len - 1]), dist(y0, q_cache.series_normalized[len - 2]));
+        d = min(d, dist(y1, q_cache.series_normalized[len - 2]));
+
         lb += d;
         if (lb >= bsf)   return lb;
 
         /// 3 points at front
-        double x2 = (t[(j+2)] - mean) / stddev;
-        d = min(dist(x0,q[2]), dist(x1, q[2]));
-        d = min(d, dist(x2,q[2]));
-        d = min(d, dist(x2,q[1]));
-        d = min(d, dist(x2,q[0]));
+        double x2 = c_cache.series_normalized[2];
+        d = min(dist(x0, q_cache.series_normalized[2]), dist(x1, q_cache.series_normalized[2]));
+        d = min(d, dist(x2, q_cache.series_normalized[2]));
+        d = min(d, dist(x2, q_cache.series_normalized[1]));
+        d = min(d, dist(x2, q_cache.series_normalized[0]));
         lb += d;
         if (lb >= bsf)   return lb;
 
         /// 3 points at back
-        double y2 = (t[(len-3+j)] - mean) / stddev;
-        d = min(dist(y0,q[len-3]), dist(y1, q[len-3]));
-        d = min(d, dist(y2,q[len-3]));
-        d = min(d, dist(y2,q[len-2]));
-        d = min(d, dist(y2,q[len-1]));
+        double y2 = c_cache.series_normalized[len - 3];
+        //XXX I think the following line is wrong: it doesn't match the previous patterns
+        d = min(dist(y0, q_cache.series_normalized[len - 3]), dist(y1, q_cache.series_normalized[len - 3]));
+        d = min(d, dist(y2, q_cache.series_normalized[len - 3]));
+        d = min(d, dist(y2, q_cache.series_normalized[len - 2]));
+        d = min(d, dist(y2, q_cache.series_normalized[len - 1]));
         lb += d;
 
         return lb;
@@ -433,15 +429,14 @@ public:
     /// t     : a circular array keeping the current data.
     /// j     : index of the starting location in t
     /// cb    : (output) current bound at each position. It will be used later for early abandoning in DTW.
-    double lb_keogh_cumulative(int* order, double *t, double *uo, double *lo, double *cb, int j, int len, double mean, double stddev, double best_so_far, CacheEntry& window_cache)
+    double lb_keogh_cumulative(const CacheEntry& candidate_cache_entry, int* order, double *uo, double *lo, double *cb, int len, double best_so_far)
     {
         double lb = 0;
         double x, d;
 
-
         for (int i = 0; i < len && lb < best_so_far; i++)
         {
-            x = window_cache.series_normalized[(order[i]+j)];
+            x = candidate_cache_entry.series_normalized[order[i]];
             d = 0;
             if (x > uo[i])
                 d = dist(x,uo[i]);
@@ -461,7 +456,7 @@ public:
     /// qo: sorted query
     /// cb: (output) current bound at each position. Used later for early abandoning in DTW.
     /// l,u: lower and upper envelop of the current data
-    double lb_keogh_data_cumulative(int* order, double *tz, double *qo, double *cb, double *l, double *u, int len, double mean, double stddev, double best_so_far = INF)
+    double lb_keogh_data_cumulative(int* order, const double *tz, double *qo, double *cb, double *l, double *u, int len, double mean, double stddev, double best_so_far = INF)
     {
         double lb = 0;
         double uu,ll,d;
@@ -487,21 +482,21 @@ public:
     /// A,B: data and query, respectively
     /// cb : cummulative bound used for early abandoning
     /// r  : size of Sakoe-Chiba warpping band
-    double dtw(double* A, double* B, double *cb, int m, int r, double bsf = INF)
+    double dtw(const double* A, const double* B, double *cb, int m, double bsf = INF)
     {
+        const int r = WARPING_r;
+        double buffer1[2 * r + 1];
+        double buffer2[2 * r + 1];
+        /// Instead of using matrix of size O(m^2) or O(mr), we will reuse two array of size O(r).
+        for(int k=0; k<2*r+1; k++)
+            buffer1[k] = buffer2[k] = INF;
 
-        double *cost;
-        double *cost_prev;
+        double *cost = buffer1;
+        double *cost_prev = buffer2;
         double *cost_tmp;
         int i,j,k;
         double x,y,z,min_cost;
 
-        /// Instead of using matrix of size O(m^2) or O(mr), we will reuse two array of size O(r).
-        cost = new double[2*r+1];
-        for(k=0; k<2*r+1; k++)    cost[k]=INF;
-
-        cost_prev = new double[2*r+1];
-        for(k=0; k<2*r+1; k++)    cost_prev[k]=INF;
 
         for (i=0; i<m; i++)
         {
@@ -536,10 +531,7 @@ public:
 
             /// We can abandon early if the current cummulative distace with lower bound together are larger than bsf
             if (i+r < m-1 && min_cost + cb[i+r+1] >= bsf)
-            {   free(cost);
-                free(cost_prev);
                 return min_cost + cb[i+r+1];
-            }
 
             /// Move current array to previous array.
             cost_tmp = cost;
@@ -550,8 +542,6 @@ public:
 
         /// the DTW distance is in the last cell in the matrix of size O(m^2) or at the middle of our array.
         double final_dtw = cost_prev[k];
-        free(cost);
-        free(cost_prev);
         return final_dtw;
     }
 
@@ -588,105 +578,34 @@ public:
     TopKMatches single_pass(unsigned int K, unsigned int query_position)
     {
         const CacheEntry& cached_query_data = cache[query_position];
+        const double *q = cached_query_data.series_normalized;
+        const unsigned int m = QUERY_LEN;
 
         double bsf;          /// best-so-far
-        double *t, *q;       /// data array and query array
-        int *order;          ///new order of the query
-        double *u, *l, *qo, *uo, *lo,*tz,*cb, *cb1, *cb2,*u_d, *l_d;
+        double *u, *l;
+        double qo[m];
+        double uo[m];
+        double lo[m];
+        int order[m];
+        double cb[m];
+        double cb1[m];
+        double cb2[m];
+
+        Index Q_tmp[m];
 
 
-        double d;
-        long long i , j;
-        double ex , ex2 , mean, stddev;
-        int m=-1, r=-1;
-        long long loc = 0;
-        double t1,t2;
+        const double* tz;
+
+        long long i;
+        double mean, stddev;
         int kim = 0,keogh = 0, keogh2 = 0;
         double dist=0, lb_kim=0, lb_k=0, lb_k2=0;
-        double *buffer, *u_buff, *l_buff;
-        Index *Q_tmp;
-
-        /// For every EPOCH points, all cummulative values, such as ex (sum), ex2 (sum square), will be restarted for reducing the floating point error.
-        int EPOCH = 100000;
-
-        /// read size of the query
-        m = query_len;
-
-        /// read warping windows
-        r = warping_r;
-
-        /// start the clock
-        t1 = clock();
-
-
-        qo = new double[m];
-        if( qo == NULL )
-            error(1);
-        uo = new double[m];;
-        if( uo == NULL )
-            error(1);
-        lo = new double[m];
-        if( lo == NULL )
-            error(1);
-
-        order = new int[m];
-        if( order == NULL )
-            error(1);
-
-        Q_tmp = new Index[m];
-        if( Q_tmp == NULL )
-            error(1);
-
-        u = new double[m];
-        if( u == NULL )
-            error(1);
-
-        l = new double[m];
-        if( l == NULL )
-            error(1);
-
-        cb = new double[m];
-        if( cb == NULL )
-            error(1);
-
-        cb1 = new double[m];
-        if( cb1 == NULL )
-            error(1);
-
-        cb2 = new double[m];
-        if( cb2 == NULL )
-            error(1);
-
-        u_d = new double[m];
-        if( u == NULL )
-            error(1);
-
-        l_d = new double[m];
-        if( l == NULL )
-            error(1);
-
-        t = new double[m * 2];
-        if( t == NULL )
-            error(1);
-
-
-        buffer = new double[EPOCH];
-        if( buffer == NULL )
-            error(1);
-
-        u_buff = new double[EPOCH];
-        if( u_buff == NULL )
-            error(1);
-
-        l_buff = new double[EPOCH];
-        if( l_buff == NULL )
-            error(1);
-
+        double *u_buff, *l_buff;
 
         /// Read query file
-        bsf = INF;
+        //bsf = INF;
+        bsf = 10;
         i = 0;
-        j = 0;
         q = cached_query_data.series_normalized;
 
         /// Create envelop of the query: lower envelop, l, and upper envelop, u
@@ -710,7 +629,6 @@ public:
             uo[i] = u[o];
             lo[i] = l[o];
         }
-        delete[] Q_tmp;
 
         /// Initial the cummulative lower bound
         for( i=0; i<m; i++)
@@ -719,177 +637,74 @@ public:
             cb2[i]=0;
         }
 
-        i = 0;          /// current index of the data in current chunk of size EPOCH
-        j = 0;          /// the starting index of the data in the circular array, t
-        ex = ex2 = 0;
-        bool done = false;
-        int it=0, ep=0, k=0;
-        long long I;    /// the starting index of the data in current chunk of size EPOCH
+        int k=0;
 
-        std::cout << "starting" << std::endl;
+        std::cout << "starting: " << query_position << std::endl;
         TopKMatches matches(100, m);
-        while(!done)
-        {
-            buffer = time_series;
-            buffer += (EPOCH-m+1) * it;
-            if ((EPOCH-m+1) * (it + 1) < time_series_len)
-                ep = EPOCH;
-            else
-                ep = (EPOCH-m+1) * (it + 1) - time_series_len;
-            /// Read first m-1 points
-            /*
-            ep=0;
-            if (it==0)
-            {   for(k=0; k<m-1; k++) {
-                    if (time_series[time_series_read_pos] != 0) {
-                        buffer[k] = time_series[time_series_read_pos];
-                        time_series_read_pos++;
-                    }
-                    else
-                        break;
-                }
-            }
-            else
-            {   for(k=0; k<m-1; k++)
-                    buffer[k] = buffer[EPOCH-m+1+k];
-            }
+        for (int candidate_position = query_position + m; candidate_position < TIME_SERIES_LEN - m; ++candidate_position) {
+            const CacheEntry& cached_candidate_data = cache[candidate_position];
+            l_buff = cached_candidate_data.lemire_envelope.lower;
+            u_buff = cached_candidate_data.lemire_envelope.upper;
 
-            /// Read buffer of size EPOCH or when all data has been read.
-            ep=m-1;
-            while(ep<EPOCH)
-            {   if (time_series[time_series_read_pos] == 0) //hit truncation byte
-                    break;
-                buffer[ep] = time_series[time_series_read_pos];
-                ep++;
-                time_series_read_pos++;
-            }
-            */
+            mean = cached_candidate_data.mean;
+            stddev = cached_candidate_data.stddev;
 
-            /// Data are read in chunk of size EPOCH.
-            /// When there is nothing to read, the loop is end.
-            if (ep<=m-1)
-            {   done = true;
-            } else
+            /// Use a constant lower bound to prune the obvious subsequence
+            lb_kim = lb_kim_hierarchy(cached_query_data, cached_candidate_data, m, bsf);
+
+
+            if (lb_kim < bsf)
             {
-                LemireEnvelope le(buffer, ep, r);
-                l_buff = le.lower;
-                u_buff = le.upper;
-
-                /// Just for printing a dot for approximate a million point. Not much accurate.
-                if (it%(1000000/(EPOCH-m+1))==0)
-                    fprintf(stderr,".");
-
-                /// Do main task here..
-                ex=0; ex2=0;
-                for(i=0; i<ep; i++)
+                /// Use a linear time lower bound to prune; z_normalization of t will be computed on the fly.
+                /// uo, lo are envelop of the query.
+                lb_k = lb_keogh_cumulative(cached_candidate_data, order, uo, lo, cb1, m, bsf);
+                if (lb_k < bsf)
                 {
-                    unsigned int current_position = (EPOCH-m+1) * it + i;
-                    CacheEntry& cached_series_data = cache[current_position];
+                    tz = cached_candidate_data.series_normalized;
 
-                    /// A bunch of data has been read and pick one of them at a time to use
-                    d = buffer[i];
-
-                    /// Calcualte sum and sum square
-                    ex += d;
-                    ex2 += d*d;
-
-                    /// t is a circular array for keeping current data
-                    t[i%m] = d;
-
-                    /// Double the size for avoiding using modulo "%" operator
-                    t[(i%m)+m] = d;
-
-                    /// Start the task when there are more than m-1 points in the current chunk
-                    if( i >= m-1 )
+                    /// Use another lb_keogh to prune
+                    /// qo is the sorted query. tz is unsorted z_normalized data.
+                    /// l_buff, u_buff are big envelop for all data in this chunk
+                    lb_k2 = lb_keogh_data_cumulative(order, tz, qo, cb2, l_buff, u_buff, m, mean, stddev, bsf);
+                    if (lb_k2 < bsf)
                     {
-                        mean = ex/m;
-                        stddev = ex2/m;
-                        stddev = sqrt(stddev-mean*mean);
-
-                        /// compute the start location of the data in the current circular array, t
-                        j = (i+1)%m;
-                        /// the start location of the data in the current chunk
-                        I = i-(m-1);
-
-                        /// Use a constant lower bound to prune the obvious subsequence
-                        lb_kim = lb_kim_hierarchy(t, q, j, m, mean, stddev, bsf);
-
-                        if (lb_kim < bsf)
+                        /// Choose better lower bound between lb_keogh and lb_keogh2 to be used in early abandoning DTW
+                        /// Note that cb and cb2 will be cumulative summed here.
+                        if (lb_k > lb_k2)
                         {
-                            /// Use a linear time lower bound to prune; z_normalization of t will be computed on the fly.
-                            /// uo, lo are envelop of the query.
-                            lb_k = lb_keogh_cumulative(order, t, uo, lo, cb1, j, m, mean, stddev, bsf, cached_series_data);
-                            if (lb_k < bsf)
-                            {
-                                tz = cached_series_data.series_normalized;
+                            cb[m-1]=cb1[m-1];
+                            for(k=m-2; k>=0; k--)
+                                cb[k] = cb[k+1]+cb1[k];
+                        }
+                        else
+                        {
+                            cb[m-1]=cb2[m-1];
+                            for(k=m-2; k>=0; k--)
+                                cb[k] = cb[k+1]+cb2[k];
+                        }
 
-                                /// Use another lb_keogh to prune
-                                /// qo is the sorted query. tz is unsorted z_normalized data.
-                                /// l_buff, u_buff are big envelop for all data in this chunk
-                                lb_k2 = lb_keogh_data_cumulative(order, tz, qo, cb2, l_buff+I, u_buff+I, m, mean, stddev, bsf);
-                                if (lb_k2 < bsf)
-                                {
-                                    /// Choose better lower bound between lb_keogh and lb_keogh2 to be used in early abandoning DTW
-                                    /// Note that cb and cb2 will be cumulative summed here.
-                                    if (lb_k > lb_k2)
-                                    {
-                                        cb[m-1]=cb1[m-1];
-                                        for(k=m-2; k>=0; k--)
-                                            cb[k] = cb[k+1]+cb1[k];
-                                    }
-                                    else
-                                    {
-                                        cb[m-1]=cb2[m-1];
-                                        for(k=m-2; k>=0; k--)
-                                            cb[k] = cb[k+1]+cb2[k];
-                                    }
 
-                                    /// Compute DTW and early abandoning if possible
-                                    dist = dtw(tz, q, cb, m, r, bsf);
+                        /// Compute DTW and early abandoning if possible
+                        dist = dtw(tz, q, cb, m, bsf);
+                        //dist = 5;
 
-                                    if( dist < bsf )
-                                    {   /// Update bsf
-                                        /// loc is the real starting location of the nearest neighbor in the file
-                                        //bsf = dist;
-                                        loc = (it)*(EPOCH-m+1) + i-m+1;
-                                        //todo: consider making one big array, keeping track of weakest match, then pruning @ end
-                                        matches.insert_match(loc, dist);
-                                        bsf = matches.weakest_dist();
-                                    }
-                                } else
-                                    keogh2++;
-                            } else
-                                keogh++;
-                        } else
-                            kim++;
-
-                        /// Reduce obsolute points from sum and sum square
-                        ex -= t[j];
-                        ex2 -= t[j]*t[j];
-                    }
-                }
-
-                /// If the size of last chunk is less then EPOCH, then no more data and terminate.
-                if (ep<EPOCH)
-                    done=true;
-                else
-                    it++;
-            }
+                        if( dist < bsf )
+                        {   /// Update bsf
+                            /// loc is the real starting location of the nearest neighbor in the file
+                            //bsf = dist;
+                            //todo: consider making one big array, keeping track of weakest match, then pruning @ end
+                            matches.insert_match(candidate_position, dist);
+                            //bsf = matches.weakest_dist();
+                        }
+                    } else
+                        keogh2++;
+                } else
+                    keogh++;
+            } else
+                kim++;
         }
         std::cout << "done" << std::endl;
-
-
-        i = (it)*(EPOCH-m+1) + ep;
-
-        delete[] uo;
-        delete[] lo;
-        delete[] qo;
-        delete[] cb;
-        delete[] cb1;
-        delete[] cb2;
-        delete[] t;
-        delete[] l_d;
-        delete[] u_d;
+        /*
 
         t2 = clock();
         printf("\n");
@@ -906,6 +721,7 @@ public:
         printf("Pruned by LB_Keogh  : %6.2f%%\n", ((double) keogh / i)*100);
         printf("Pruned by LB_Keogh2 : %6.2f%%\n", ((double) keogh2 / i)*100);
         printf("DTW Calculation     : %6.2f%%\n", 100-(((double)kim+keogh+keogh2)/i*100));
+        */
         return matches;
     }
 };
