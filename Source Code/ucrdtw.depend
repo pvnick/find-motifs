@@ -1,10 +1,10 @@
 # depslib dependency file v1.0
-1412359640 source:/home/pvnick/Downloads/ucrsuite/Source Code/main.cpp
+1412370043 source:/home/pvnick/Downloads/ucrsuite/Source Code/main.cpp
 	"find_motifs.h"
 	<iostream>
 	<string>
 
-1412361351 /home/pvnick/Downloads/ucrsuite/Source Code/find_motifs.h
+1412370205 /home/pvnick/Downloads/ucrsuite/Source Code/find_motifs.h
 	<stdio.h>
 	<stdlib.h>
 	<math.h>
@@ -12,4 +12,5 @@
 	<iostream>
 	<fstream>
 	<string>
+	<memory>
 
