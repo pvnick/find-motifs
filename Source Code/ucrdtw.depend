@@ -1,12 +1,15 @@
 # depslib dependency file v1.0
-1412443400 source:/home/pvnick/Downloads/ucrsuite/Source Code/main.cpp
+1412456454 source:/home/pvnick/Downloads/ucrsuite/Source Code/main.cpp
 	"find_motifs.h"
 	<iostream>
 	<string>
+	<utility>
+	"profiler.h"
 	<boost/mpi.hpp>
 	<boost/serialization/string.hpp>
+	<boost/asio.hpp>
 
-1412443441 /home/pvnick/Downloads/ucrsuite/Source Code/find_motifs.h
+1412456441 /home/pvnick/Downloads/ucrsuite/Source Code/find_motifs.h
 	<stdio.h>
 	<stdlib.h>
 	<math.h>
@@ -16,4 +19,6 @@
 	<string>
 	<memory>
 	<cassert>
+	<boost/interprocess/shared_memory_object.hpp>
+	<boost/interprocess/mapped_region.hpp>
 

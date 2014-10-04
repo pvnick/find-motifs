@@ -34,6 +34,8 @@
 #include <string>
 #include <memory>
 #include <cassert>
+#include <boost/interprocess/shared_memory_object.hpp>
+#include <boost/interprocess/mapped_region.hpp>
 
 #define min(x,y) ((x)<(y)?(x):(y))
 #define max(x,y) ((x)>(y)?(x):(y))
@@ -47,12 +49,14 @@
 #define WARPING_WINDOW 0.05
 #define WARPING_r (WARPING_WINDOW <= 1) ? (const int)(WARPING_WINDOW * QUERY_LEN) : (const int)WARPING_WINDOW
 #define SERIES_FILEPATH "/home/pvnick/oximetry.txt"
+#define SHARED_CACHE_MEMORYNAME "Shared motif finding engine cache"
 
 using namespace std;
 
 class MotifFinder {
 private:
     double* time_series;
+    bool cache_uses_shared_memory;
 
     class LemireEnvelope {
     private:
@@ -222,9 +226,19 @@ private:
         ~CacheEntry() {}
     };
     CacheEntry* cache; //holds a cache entry at each position within the time series
+    void initialize_cache() {
+        std::cout << "Caching reusable data" << std::endl;
+        std::allocator<CacheEntry> cache_alloc;
+        for (int i = 0; i != TIME_SERIES_LEN; ++i) {
+            cache_alloc.construct(cache + i, time_series, i);
+            if ((i % 100000) == 0) {
+                std::cout << i << "/" << TIME_SERIES_LEN << " (" << ((float)i / TIME_SERIES_LEN * 100) << "% complete)" << std::endl;
+            }
+        }
+    }
 public:
-
-    MotifFinder() {
+    MotifFinder() = delete;
+    MotifFinder(bool use_shared_cache, bool initialize_shared_cache): cache_uses_shared_memory(use_shared_cache) {
         std::cout << "Initializing motif finder engine" << std::endl;
         std::cout << "Reading time series data file" << std::endl;
         std::ifstream in(SERIES_FILEPATH);
@@ -233,22 +247,45 @@ public:
         for (int i = 0; in >> point && i != TIME_SERIES_LEN; ++i)
             time_series[i] = point;
         in.close();
-        std::cout << "Caching reusable data" << std::endl;
-        std::allocator<CacheEntry> cache_alloc;
-        cache = cache_alloc.allocate(TIME_SERIES_LEN);
-        for (int i = 0; i != TIME_SERIES_LEN; ++i) {
-            cache_alloc.construct(cache + i, time_series, i);
-            if ((i % 100000) == 0) {
-                std::cout << i << "/" << TIME_SERIES_LEN << " (" << ((float)i / TIME_SERIES_LEN * 100) << "% complete)" << std::endl;
+
+        if (cache_uses_shared_memory) {
+            if (initialize_shared_cache) {
+                //this process is responsible for initializing the cache
+
+                boost::interprocess::shared_memory_object shared_cache_memory = boost::interprocess::shared_memory_object(
+                    boost::interprocess::create_only,
+                    SHARED_CACHE_MEMORYNAME,
+                    boost::interprocess::read_write);
+                shared_cache_memory.truncate(TIME_SERIES_LEN * sizeof(CacheEntry));
+                boost::interprocess::mapped_region region(shared_cache_memory, boost::interprocess::read_write);
+                cache = static_cast<CacheEntry*>(region.get_address());
+                initialize_cache();
+            } else {
+                //this process uses the shared cache memory that another process initialized
+                boost::interprocess::shared_memory_object shared_cache_memory = boost::interprocess::shared_memory_object(
+                    boost::interprocess::open_only,
+                    SHARED_CACHE_MEMORYNAME,
+                    boost::interprocess::read_only);
+
+                boost::interprocess::mapped_region region(shared_cache_memory, boost::interprocess::read_only);
+                cache = static_cast<CacheEntry*>(region.get_address());
             }
+        } else {
+            std::allocator<CacheEntry> cache_alloc;
+            cache = cache_alloc.allocate(TIME_SERIES_LEN);
+            initialize_cache();
         }
     }
 
     ~MotifFinder() {
-        std::allocator<CacheEntry> cache_alloc;
-        for (int i = 0; i != TIME_SERIES_LEN; ++i)
-            cache_alloc.destroy(cache + i);
-        cache_alloc.deallocate(cache, TIME_SERIES_LEN);
+        if (cache_uses_shared_memory) {
+            boost::interprocess::shared_memory_object::remove(SHARED_CACHE_MEMORYNAME);
+        } else {
+            std::allocator<CacheEntry> cache_alloc;
+            for (int i = 0; i != TIME_SERIES_LEN; ++i)
+                cache_alloc.destroy(cache + i);
+            cache_alloc.deallocate(cache, TIME_SERIES_LEN);
+        }
         delete[] time_series;
     }
 

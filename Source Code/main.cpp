@@ -4,7 +4,7 @@
 #include "find_motifs.h"
 #include <iostream>
 #include <string>
-#include <pair>
+#include <utility>
 
 #ifdef USE_PROFILER
     #include "profiler.h"
@@ -14,8 +14,10 @@
     #include <boost/serialization/string.hpp>
     #include <boost/asio.hpp>
 
-    typedef unsigned int rank_id
     namespace mpi = boost::mpi;
+    namespace interprocess = boost::interprocess;
+
+    typedef unsigned int rank_id;
     typedef std::pair<std::string, rank_id> hostname_rank_pair;
     static rank_id root_rank = 0;
     static std::map<std::string, rank_id> hostname_leaders;
@@ -79,18 +81,22 @@
     MotifFinder get_engine() {
         //engine cache takes up a few gigs of memory. therefore, only initialize it once per machine,
         //then share the memory among all other procs on the same machine
-        mpi::environment env;
         mpi::communicator world;
         rank_id my_rank = world.rank();
-        MotifFinder engine;
         if (is_hostname_leader()) {
             //current process is the leader on this machine. tell the motif finder engine to allocate the cache, then share its memory
-            engine->init();
-            mpi::broadcast(world, shared memory, hostname_leader);
+            msg("Initializing cache") << std::endl;
+            MotifFinder engine(true, true);
+            bool initialized = true;
+            mpi::broadcast(world, initialized, hostname_leader);
         } else {
             //a different process is the leader on this machine. wait for it to allocate the cache then tell
             //the motif finder engine to use its shared memory
-            mpi::broadcast(world, shared memory, hostname_leader);
+            msg("Waiting for cache to initialize") << std::endl;
+            bool initialized;
+            mpi::broadcast(world, initialized, hostname_leader);
+            msg("Found initialized cache") << std::endl;
+            MotifFinder engine(true, false);
         }
 
         return engine;
@@ -104,7 +110,6 @@
     }
 
     size_t my_query_start_pos() {
-        mpi::environment env;
         mpi::communicator world;
         unsigned int num_procs = world.size();
         rank_id my_rank = world.rank();
@@ -112,7 +117,6 @@
     }
 
     size_t my_query_end_pos() {
-        mpi::environment env;
         mpi::communicator world;
         unsigned int num_procs = world.size();
         rank_id my_rank = world.rank();
@@ -128,8 +132,7 @@
     }
 
     MotifFinder get_engine() {
-        MotifFinder engine;
-        engine->init();
+        MotifFinder engine(false, false);
         return engine;
     }
 #endif
@@ -137,6 +140,9 @@
 /// Main Function
 int main(int argc , char *argv[] )
 {
+#ifdef USE_MPI
+    mpi::environment env(argc, argv);
+#endif
     /*
     int num_procs = 100;
     for (int i = 0; i != num_procs; ++i) {
@@ -150,10 +156,10 @@ int main(int argc , char *argv[] )
     size_t start_pos = my_query_start_pos();
     size_t end_pos = my_query_end_pos();
     MotifFinder engine = get_engine();
-    #ifdef USE_PROFILER
-        ProfilerStart("/tmp/profile");
-        end_pos = start_pos + 3;
-    #endif
+#ifdef USE_PROFILER
+    ProfilerStart("/tmp/profile");
+    end_pos = start_pos + 3;
+#endif
     for (size_t i = start_pos; i != end_pos
                             && i != TIME_SERIES_LEN - QUERY_LEN /*don't query at the end of the time series*/
                             ; ++i) {
@@ -161,8 +167,8 @@ int main(int argc , char *argv[] )
         MotifFinder::TopKMatches result = engine.single_pass(K, i);
         result.print();
     }
-    #ifdef USE_PROFILER
-        ProfilerStop();
-    #endif
+#ifdef USE_PROFILER
+    ProfilerStop();
+#endif
     return 0;
 }
