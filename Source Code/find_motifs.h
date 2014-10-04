@@ -214,7 +214,7 @@ private:
             mean = ex/fragment_length;
             stddev = ex2/fragment_length;
             stddev = sqrt(stddev-mean*mean);
-            for(int i = 0; i != fragment_length; i++)
+            for(unsigned int i = 0; i != fragment_length; i++)
                  series_normalized[i] = (series_normalized[i] - mean)/stddev;
 
             lemire_envelope = LemireEnvelope(time_series + position, WARPING_r);
@@ -320,7 +320,7 @@ public:
         }
         Match* get_self_match_preceeding(long long loc) {
             Match* m = matches_head;
-            for (m = matches_head; m->next != nullptr && abs(m->next->loc - loc) >= query_length; m = m->next);
+            for (m = matches_head; m->next != nullptr && (size_t)abs(m->next->loc - loc) >= query_length; m = m->next);
             return m;
         }
         void insert_match(long long loc, double dist) {
@@ -634,7 +634,7 @@ public:
 
         std::cout << "starting: " << query_position << std::endl;
         TopKMatches matches(100, m);
-        for (int candidate_position = query_position + m; candidate_position < TIME_SERIES_LEN - m; ++candidate_position) {
+        for (size_t candidate_position = query_position + m; candidate_position < TIME_SERIES_LEN - m; ++candidate_position) {
             const CacheEntry& cached_candidate_data = cache[candidate_position];
             const double* l_buff = cached_candidate_data.lemire_envelope.lower;
             const double* u_buff = cached_candidate_data.lemire_envelope.upper;

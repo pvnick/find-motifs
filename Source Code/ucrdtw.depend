@@ -1,10 +1,12 @@
 # depslib dependency file v1.0
-1412440423 source:/home/pvnick/Downloads/ucrsuite/Source Code/main.cpp
+1412443400 source:/home/pvnick/Downloads/ucrsuite/Source Code/main.cpp
 	"find_motifs.h"
 	<iostream>
 	<string>
+	<boost/mpi.hpp>
+	<boost/serialization/string.hpp>
 
-1412441804 /home/pvnick/Downloads/ucrsuite/Source Code/find_motifs.h
+1412443441 /home/pvnick/Downloads/ucrsuite/Source Code/find_motifs.h
 	<stdio.h>
 	<stdlib.h>
 	<math.h>
