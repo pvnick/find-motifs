@@ -227,20 +227,20 @@ private:
     };
     CacheEntry* cache; //holds a cache entry at each position within the time series
     void initialize_cache() {
-        std::cout << "Caching reusable data" << std::endl;
+        std::cerr << "Caching reusable data" << std::endl;
         std::allocator<CacheEntry> cache_alloc;
         for (int i = 0; i != TIME_SERIES_LEN; ++i) {
             cache_alloc.construct(cache + i, time_series, i);
             if ((i % 100000) == 0) {
-                std::cout << i << "/" << TIME_SERIES_LEN << " (" << ((float)i / TIME_SERIES_LEN * 100) << "% complete)" << std::endl;
+                std::cerr << i << "/" << TIME_SERIES_LEN << " (" << ((float)i / TIME_SERIES_LEN * 100) << "% complete)" << std::endl;
             }
         }
     }
 public:
     MotifFinder() = delete;
     MotifFinder(bool use_shared_cache, bool initialize_shared_cache): cache_uses_shared_memory(use_shared_cache) {
-        std::cout << "Initializing motif finder engine" << std::endl;
-        std::cout << "Reading time series data file" << std::endl;
+        std::cerr << "Initializing motif finder engine" << std::endl;
+        std::cerr << "Reading time series data file" << std::endl;
         std::ifstream in(SERIES_FILEPATH);
         time_series = new double[TIME_SERIES_LEN];
         double point;
@@ -251,9 +251,8 @@ public:
         if (cache_uses_shared_memory) {
             if (initialize_shared_cache) {
                 //this process is responsible for initializing the cache
+                //delete the shared memory file if it already exists
                 boost::interprocess::shared_memory_object::remove(SHARED_CACHE_MEMORYNAME);
-
-
                 boost::interprocess::shared_memory_object cache_shm(
                     boost::interprocess::create_only,
                     SHARED_CACHE_MEMORYNAME,
@@ -391,7 +390,6 @@ public:
         }
         void print() {
             Match* m;
-            std::cout << "loc,dist" << std::endl;
             for (m = matches_head->next; m != nullptr; m = m->next) {
                 std::cout << m->loc << "," << m->dist << std::endl;
             }
@@ -672,7 +670,7 @@ public:
 
         int k=0;
 
-        std::cout << "starting: " << query_position << std::endl;
+        std::cerr << "starting: " << query_position << std::endl;
         TopKMatches matches(100, m);
         for (size_t candidate_position = query_position + m; candidate_position < TIME_SERIES_LEN - m; ++candidate_position) {
             const CacheEntry& cached_candidate_data = cache[candidate_position];
@@ -735,10 +733,7 @@ public:
             } else
                 kim++;
         }
-        std::cout << kim << std::endl;
-        std::cout << keogh << std::endl;
-        std::cout << keogh2 << std::endl;
-        std::cout << "done" << std::endl;
+        std::cerr << "done" << std::endl;
         /*
 
         t2 = clock();
