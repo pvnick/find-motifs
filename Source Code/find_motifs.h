@@ -38,7 +38,6 @@
 #include <boost/interprocess/mapped_region.hpp>
 #include <algorithm>
 
-#define max(x,y) ((x)>(y)?(x):(y))
 #define dist(x,y) ((x-y)*(x-y))
 
 #define INF 1e20       //Pseudo Infitinte number for this code
@@ -535,10 +534,10 @@ public:
 
         for (i=0; i<m; i++)
         {
-            k = max(0,r-i);
+            k = std::max(0,r-i);
             min_cost = INF;
 
-            for(j=max(0,i-r); j<=std::min(m-1,i+r); j++, k++)
+            for(j=std::max(0,i-r); j<=std::min(m-1,i+r); j++, k++)
             {
                 /// Initialize all row and column
                 if ((i==0)&&(j==0))
