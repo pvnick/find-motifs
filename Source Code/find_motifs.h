@@ -662,7 +662,7 @@ public:
                     if (lb_k2 < bsf)
                     {
                         /// Choose better lower bound between lb_keogh and lb_keogh2 to be used in early abandoning DTW
-                        /// Note that cb and cb2 will be cumulative summed here.
+                        /// Note that cb and cb2 will be cumulative summed here (possible optimization opportunity - move to dtw function?).
                         if (lb_k > lb_k2)
                         {
                             cb[m-1]=cb1[m-1];
@@ -679,7 +679,6 @@ public:
 
                         /// Compute DTW and early abandoning if possible
                         dist = dtw(tz, q, cb, m, bsf);
-                        //dist = 5;
 
                         if( dist < bsf )
                         {   /// Update bsf

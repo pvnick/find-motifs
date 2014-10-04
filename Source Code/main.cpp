@@ -1,9 +1,13 @@
 //#define USE_MPI
+//#define USE_PROFILER
 
 #include "find_motifs.h"
 #include <iostream>
 #include <string>
 
+#ifdef USE_PROFILER
+    #include "profiler.h"
+#endif
 #ifdef USE_MPI
     #include <boost/mpi.hpp>
     #include <boost/serialization/string.hpp>
@@ -58,6 +62,10 @@ int main(  int argc , char *argv[] )
     size_t start_pos = my_query_start_pos();
     size_t end_pos = my_query_end_pos();
     MotifFinder engine;
+    #ifdef USE_PROFILER
+        ProfilerStart("/tmp/profile");
+        end_pos = start_pos + 3;
+    #endif
     for (size_t i = start_pos; i != end_pos
                             && i != TIME_SERIES_LEN - QUERY_LEN /*don't query at the end of the time series*/
                             ; ++i) {
@@ -65,6 +73,8 @@ int main(  int argc , char *argv[] )
         MotifFinder::TopKMatches result = engine.single_pass(K, i);
         result.print();
     }
-
+    #ifdef USE_PROFILER
+        ProfilerStop();
+    #endif
     return 0;
 }
