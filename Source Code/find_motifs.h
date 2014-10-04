@@ -57,6 +57,7 @@ class MotifFinder {
 private:
     double* time_series;
     bool cache_uses_shared_memory;
+    boost::interprocess::mapped_region cache_memory_region;
 
     class LemireEnvelope {
     private:
@@ -251,24 +252,27 @@ public:
         if (cache_uses_shared_memory) {
             if (initialize_shared_cache) {
                 //this process is responsible for initializing the cache
+                boost::interprocess::shared_memory_object::remove(SHARED_CACHE_MEMORYNAME);
 
-                boost::interprocess::shared_memory_object shared_cache_memory = boost::interprocess::shared_memory_object(
+
+                boost::interprocess::shared_memory_object cache_shm(
                     boost::interprocess::create_only,
                     SHARED_CACHE_MEMORYNAME,
                     boost::interprocess::read_write);
-                shared_cache_memory.truncate(TIME_SERIES_LEN * sizeof(CacheEntry));
-                boost::interprocess::mapped_region region(shared_cache_memory, boost::interprocess::read_write);
-                cache = static_cast<CacheEntry*>(region.get_address());
+
+                cache_shm.truncate(TIME_SERIES_LEN * sizeof(CacheEntry));
+                cache_memory_region = boost::interprocess::mapped_region(cache_shm, boost::interprocess::read_write);
+                cache = static_cast<CacheEntry*>(cache_memory_region.get_address());
                 initialize_cache();
             } else {
                 //this process uses the shared cache memory that another process initialized
-                boost::interprocess::shared_memory_object shared_cache_memory = boost::interprocess::shared_memory_object(
+                boost::interprocess::shared_memory_object cache_shm(
                     boost::interprocess::open_only,
                     SHARED_CACHE_MEMORYNAME,
                     boost::interprocess::read_only);
 
-                boost::interprocess::mapped_region region(shared_cache_memory, boost::interprocess::read_only);
-                cache = static_cast<CacheEntry*>(region.get_address());
+                cache_memory_region = boost::interprocess::mapped_region(cache_shm, boost::interprocess::read_only);
+                cache = static_cast<CacheEntry*>(cache_memory_region.get_address());
             }
         } else {
             std::allocator<CacheEntry> cache_alloc;

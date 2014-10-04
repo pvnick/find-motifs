@@ -80,27 +80,27 @@
         return world.rank() == get_hostname_leader();
     }
 
-    MotifFinder get_engine() {
+    MotifFinder* get_engine() {
         //engine cache takes up a few gigs of memory. therefore, only initialize it once per machine,
         //then share the memory among all other procs on the same machine
+        MotifFinder* engine;
         mpi::communicator world;
         rank_id my_rank = world.rank();
         if (is_hostname_leader()) {
             //current process is the leader on this machine. tell the motif finder engine to allocate the cache, then share its memory
             msg("Initializing cache") << std::endl;
-            MotifFinder engine(true, true);
+            engine = new MotifFinder(true, true);
             bool initialized = true;
-            mpi::broadcast(world, initialized, hostname_leader);
+            mpi::broadcast(world, initialized, get_hostname_leader());
         } else {
             //a different process is the leader on this machine. wait for it to allocate the cache then tell
             //the motif finder engine to use its shared memory
             msg("Waiting for cache to initialize") << std::endl;
             bool initialized;
-            mpi::broadcast(world, initialized, hostname_leader);
+            mpi::broadcast(world, initialized, get_hostname_leader());
             msg("Found initialized cache") << std::endl;
-            MotifFinder engine(true, false);
+            engine = new MotifFinder(true, false);
         }
-
         return engine;
     }
 
@@ -133,9 +133,8 @@
         return TIME_SERIES_LEN;
     }
 
-    MotifFinder get_engine() {
-        MotifFinder engine(false, false);
-        return engine;
+    MotifFinder* get_engine() {
+        return new MotifFinder(false, false);
     }
 #endif
 
@@ -157,7 +156,7 @@ int main(int argc , char *argv[] )
     unsigned int K = 100;
     size_t start_pos = my_query_start_pos();
     size_t end_pos = my_query_end_pos();
-    MotifFinder engine = get_engine();
+    MotifFinder* engine = get_engine();
 #ifdef USE_PROFILER
     ProfilerStart("/tmp/profile");
     end_pos = start_pos + 3;
@@ -166,11 +165,12 @@ int main(int argc , char *argv[] )
                             && i != TIME_SERIES_LEN - QUERY_LEN /*don't query at the end of the time series*/
                             ; ++i) {
         std::cout << "Querying from " << i << std::endl;
-        MotifFinder::TopKMatches result = engine.single_pass(K, i);
+        MotifFinder::TopKMatches result = engine->single_pass(K, i);
         result.print();
     }
 #ifdef USE_PROFILER
     ProfilerStop();
 #endif
+    delete engine;
     return 0;
 }
