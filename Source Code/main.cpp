@@ -1,4 +1,4 @@
-//#define USE_MPI
+#define USE_MPI
 //#define USE_PROFILER
 
 #include "find_motifs.h"
