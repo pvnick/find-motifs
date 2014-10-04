@@ -1,4 +1,4 @@
-//#define USE_MPI
+#define USE_MPI
 //#define USE_PROFILER
 
 #include "find_motifs.h"
@@ -13,6 +13,7 @@
 #ifdef USE_MPI
     #include <boost/mpi.hpp>
     #include <boost/serialization/string.hpp>
+    #include <boost/serialization/map.hpp>
     #include <boost/asio.hpp>
 
     namespace mpi = boost::mpi;
