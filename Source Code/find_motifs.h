@@ -180,20 +180,13 @@ private:
             destroy(&dl);
         }
     public:
-        double* lower;
-        double* upper;
+        double lower[QUERY_LEN];
+        double upper[QUERY_LEN];
         LemireEnvelope() = default;
         LemireEnvelope(double* t, int r) {
-            lower = new double[QUERY_LEN];
-            assert(lower != nullptr);
-            upper = new double[QUERY_LEN];
-            assert(upper != nullptr);
             lower_upper_lemire(t, QUERY_LEN, r, lower, upper);
         }
-        ~LemireEnvelope() {
-            delete[] upper;
-            delete[] lower;
-        }
+        ~LemireEnvelope() {}
     };
 
     class CacheEntry {
@@ -235,9 +228,10 @@ public:
         std::cout << "Initializing motif finder engine" << std::endl;
         std::cout << "Reading time series data file" << std::endl;
         std::ifstream in(SERIES_FILEPATH);
-        int i;
         time_series = new double[TIME_SERIES_LEN];
-        while (i < TIME_SERIES_LEN && (in >> time_series[i++]));
+        double point;
+        for (int i = 0; in >> point && i != TIME_SERIES_LEN; ++i)
+            time_series[i] = point;
         in.close();
         std::cout << "Caching reusable data" << std::endl;
         std::allocator<CacheEntry> cache_alloc;
@@ -456,7 +450,7 @@ public:
     /// qo: sorted query
     /// cb: (output) current bound at each position. Used later for early abandoning in DTW.
     /// l,u: lower and upper envelop of the current data
-    double lb_keogh_data_cumulative(int* order, const double *tz, double *qo, double *cb, double *l, double *u, int len, double mean, double stddev, double best_so_far = INF)
+    double lb_keogh_data_cumulative(int* order, const double *tz, double *qo, double *cb, const double *l, const double *u, int len, double mean, double stddev, double best_so_far = INF)
     {
         double lb = 0;
         double uu,ll,d;
@@ -582,7 +576,7 @@ public:
         const unsigned int m = QUERY_LEN;
 
         double bsf;          /// best-so-far
-        double *u, *l;
+        //double *u, *l;
         double qo[m];
         double uo[m];
         double lo[m];
@@ -600,17 +594,16 @@ public:
         double mean, stddev;
         int kim = 0,keogh = 0, keogh2 = 0;
         double dist=0, lb_kim=0, lb_k=0, lb_k2=0;
-        double *u_buff, *l_buff;
 
         /// Read query file
-        //bsf = INF;
-        bsf = 10;
+        bsf = INF;
+        //bsf = 10;
         i = 0;
         q = cached_query_data.series_normalized;
 
         /// Create envelop of the query: lower envelop, l, and upper envelop, u
-        l = cached_query_data.lemire_envelope.lower;
-        u = cached_query_data.lemire_envelope.upper;
+        const double* l = cached_query_data.lemire_envelope.lower;
+        const double* u = cached_query_data.lemire_envelope.upper;
 
         /// Sort the query one time by abs(z-norm(q[i]))
         //todo: consider storing sorted query in cache (will this help anything?)
@@ -643,8 +636,8 @@ public:
         TopKMatches matches(100, m);
         for (int candidate_position = query_position + m; candidate_position < TIME_SERIES_LEN - m; ++candidate_position) {
             const CacheEntry& cached_candidate_data = cache[candidate_position];
-            l_buff = cached_candidate_data.lemire_envelope.lower;
-            u_buff = cached_candidate_data.lemire_envelope.upper;
+            const double* l_buff = cached_candidate_data.lemire_envelope.lower;
+            const double* u_buff = cached_candidate_data.lemire_envelope.upper;
 
             mean = cached_candidate_data.mean;
             stddev = cached_candidate_data.stddev;
@@ -694,7 +687,7 @@ public:
                             //bsf = dist;
                             //todo: consider making one big array, keeping track of weakest match, then pruning @ end
                             matches.insert_match(candidate_position, dist);
-                            //bsf = matches.weakest_dist();
+                            bsf = matches.weakest_dist();
                         }
                     } else
                         keogh2++;
@@ -703,6 +696,9 @@ public:
             } else
                 kim++;
         }
+        std::cout << kim << std::endl;
+        std::cout << keogh << std::endl;
+        std::cout << keogh2 << std::endl;
         std::cout << "done" << std::endl;
         /*
 
