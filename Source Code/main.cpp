@@ -1,4 +1,4 @@
-#define USE_MPI
+//#define USE_MPI
 //#define USE_PROFILER
 
 #include "find_motifs.h"
@@ -27,8 +27,8 @@
 
     std::ostream& msg(std::string str) {
         mpi::communicator world;
-        std::cout << "Proc " << world.rank() << ": " << str;
-        return std::cout;
+        std::cerr << "Proc " << world.rank() << ": " << str;
+        return std::cerr;
     }
 
     std::string hostname() {
@@ -125,6 +125,11 @@
         return query_start_position_by_params(TIME_SERIES_LEN, my_rank + 1, num_procs);
     }
 #else
+    std::ostream& msg(std::string str) {
+        std::cerr << str;
+        return std::cerr;
+    }
+
     size_t my_query_start_pos() {
         return 0;
     }
@@ -149,8 +154,8 @@ int main(int argc , char *argv[] )
     for (int i = 0; i != num_procs; ++i) {
         size_t fin = query_start_position(TIME_SERIES_LEN, i + 1, num_procs);
         size_t start = query_start_position(TIME_SERIES_LEN, i, num_procs);
-        std::cout << "Start: " << start << ", End: " << fin << ", Queries: " << fin - start << ", Candidates: ";
-        std::cout << (TIME_SERIES_LEN - start) * (TIME_SERIES_LEN - start + 1) / 2 - (TIME_SERIES_LEN - fin) * (TIME_SERIES_LEN - fin + 1) / 2 << std::endl;
+        std::cerr << "Start: " << start << ", End: " << fin << ", Queries: " << fin - start << ", Candidates: ";
+        std::cerr << (TIME_SERIES_LEN - start) * (TIME_SERIES_LEN - start + 1) / 2 - (TIME_SERIES_LEN - fin) * (TIME_SERIES_LEN - fin + 1) / 2 << std::endl;
     }
     */
     unsigned int K = 100;
@@ -164,9 +169,10 @@ int main(int argc , char *argv[] )
     for (size_t i = start_pos; i != end_pos
                             && i != TIME_SERIES_LEN - QUERY_LEN /*don't query at the end of the time series*/
                             ; ++i) {
-        std::cout << "Querying from " << i << std::endl;
+        msg("Querying from ") << i << std::endl;
         MotifFinder::TopKMatches result = engine->single_pass(K, i);
         result.print();
+        msg("Finished ") << i << "/" << (end_pos - start_pos) << " (" << (float)i / (end_pos - start_pos) * 100 << "%) complete" << std::endl;
     }
 #ifdef USE_PROFILER
     ProfilerStop();
