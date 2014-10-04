@@ -47,7 +47,7 @@
 #define QUERY_LEN 100
 #define WARPING_WINDOW 0.05
 #define WARPING_r (WARPING_WINDOW <= 1) ? (const int)(WARPING_WINDOW * QUERY_LEN) : (const int)WARPING_WINDOW
-#define SERIES_FILEPATH "/home/pvnick/oximetry.txt"
+#define SERIES_FILEPATH "/scratch/lfs/pvnick/oximetry.txt"
 #define SHARED_CACHE_MEMORYNAME "Shared motif finding engine cache"
 
 using namespace std;
