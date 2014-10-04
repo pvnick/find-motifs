@@ -36,8 +36,8 @@
 #include <cassert>
 #include <boost/interprocess/shared_memory_object.hpp>
 #include <boost/interprocess/mapped_region.hpp>
+#include <algorithm>
 
-#define min(x,y) ((x)<(y)?(x):(y))
 #define max(x,y) ((x)>(y)?(x):(y))
 #define dist(x,y) ((x-y)*(x-y))
 
@@ -417,35 +417,35 @@ public:
 
         /// 2 points at front
         double x1 = c_cache.series_normalized[1];
-        d = min(dist(x1, q_cache.series_normalized[0]), dist(x0, q_cache.series_normalized[1]));
-        d = min(d, dist(x1, q_cache.series_normalized[1]));
+        d = std::min(dist(x1, q_cache.series_normalized[0]), dist(x0, q_cache.series_normalized[1]));
+        d = std::min(d, dist(x1, q_cache.series_normalized[1]));
         lb += d;
         if (lb >= bsf)   return lb;
 
         /// 2 points at back
         double y1 = c_cache.series_normalized[len - 2];
-        d = min(dist(y1, q_cache.series_normalized[len - 1]), dist(y0, q_cache.series_normalized[len - 2]));
-        d = min(d, dist(y1, q_cache.series_normalized[len - 2]));
+        d = std::min(dist(y1, q_cache.series_normalized[len - 1]), dist(y0, q_cache.series_normalized[len - 2]));
+        d = std::min(d, dist(y1, q_cache.series_normalized[len - 2]));
 
         lb += d;
         if (lb >= bsf)   return lb;
 
         /// 3 points at front
         double x2 = c_cache.series_normalized[2];
-        d = min(dist(x0, q_cache.series_normalized[2]), dist(x1, q_cache.series_normalized[2]));
-        d = min(d, dist(x2, q_cache.series_normalized[2]));
-        d = min(d, dist(x2, q_cache.series_normalized[1]));
-        d = min(d, dist(x2, q_cache.series_normalized[0]));
+        d = std::min(dist(x0, q_cache.series_normalized[2]), dist(x1, q_cache.series_normalized[2]));
+        d = std::min(d, dist(x2, q_cache.series_normalized[2]));
+        d = std::min(d, dist(x2, q_cache.series_normalized[1]));
+        d = std::min(d, dist(x2, q_cache.series_normalized[0]));
         lb += d;
         if (lb >= bsf)   return lb;
 
         /// 3 points at back
         double y2 = c_cache.series_normalized[len - 3];
         //XXX I think the following line is wrong: it doesn't match the previous patterns
-        d = min(dist(y0, q_cache.series_normalized[len - 3]), dist(y1, q_cache.series_normalized[len - 3]));
-        d = min(d, dist(y2, q_cache.series_normalized[len - 3]));
-        d = min(d, dist(y2, q_cache.series_normalized[len - 2]));
-        d = min(d, dist(y2, q_cache.series_normalized[len - 1]));
+        d = std::min(dist(y0, q_cache.series_normalized[len - 3]), dist(y1, q_cache.series_normalized[len - 3]));
+        d = std::min(d, dist(y2, q_cache.series_normalized[len - 3]));
+        d = std::min(d, dist(y2, q_cache.series_normalized[len - 2]));
+        d = std::min(d, dist(y2, q_cache.series_normalized[len - 1]));
         lb += d;
 
         return lb;
@@ -534,7 +534,7 @@ public:
             k = max(0,r-i);
             min_cost = INF;
 
-            for(j=max(0,i-r); j<=min(m-1,i+r); j++, k++)
+            for(j=max(0,i-r); j<=std::min(m-1,i+r); j++, k++)
             {
                 /// Initialize all row and column
                 if ((i==0)&&(j==0))
@@ -552,7 +552,7 @@ public:
                 else                      z = cost_prev[k];
 
                 /// Classic DTW calculation
-                cost[k] = min( min( x, y) , z) + dist(A[i],B[j]);
+                cost[k] = std::min( std::min( x, y) , z) + dist(A[i],B[j]);
 
                 /// Find minimum cost in row for early abandoning (possibly to use column instead of row).
                 if (cost[k] < min_cost)

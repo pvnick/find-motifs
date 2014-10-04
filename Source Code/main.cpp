@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 #include <utility>
+#include <algorithm>
 
 #ifdef USE_PROFILER
     #include "profiler.h"
