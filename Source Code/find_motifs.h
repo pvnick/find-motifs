@@ -1,5 +1,5 @@
-#ifndef FIND_MOTIFS_H
-#define FIND_MOTIFS_H
+#ifndef _FIND_MOTIFS_H_
+#define _FIND_MOTIFS_H_
 
 /***********************************************************************/
 /************************* DISCLAIMER **********************************/
@@ -41,204 +41,18 @@
 #define dist(x,y) ((x-y)*(x-y))
 
 #define INF 1e20       //Pseudo Infitinte number for this code
-
-//hardcoded values to prevent memory allocation
-#define TIME_SERIES_LEN 1663231
-#define QUERY_LEN 100
-#define WARPING_WINDOW 0.05
-#define WARPING_r (WARPING_WINDOW <= 1) ? (const int)(WARPING_WINDOW * QUERY_LEN) : (const int)WARPING_WINDOW
-#define SERIES_FILEPATH "/scratch/lfs/pvnick/oximetry.txt"
-#define SHARED_CACHE_MEMORYNAME "Shared motif finding engine cache"
+#include "shared_cache.h"
 
 using namespace std;
 
 class MotifFinder {
 private:
     double* time_series;
-    bool cache_uses_shared_memory;
-    boost::interprocess::mapped_region cache_memory_region;
+    cache_type* cache;
 
-    class LemireEnvelope {
-    private:
-        /// Data structure (circular array) for finding minimum and maximum for LB_Keogh envolop
-        struct deque
-        {   int *dq;
-            int size,capacity;
-            int f,r;
-        };
-
-        /// Initial the queue at the begining step of envelop calculation
-        void init(deque *d, int capacity)
-        {
-            d->capacity = capacity;
-            d->size = 0;
-            d->dq = new int[d->capacity];
-            d->f = 0;
-            d->r = d->capacity-1;
-        }
-
-        /// Destroy the queue
-        void destroy(deque *d)
-        {
-            delete[] d->dq;
-        }
-
-        /// Insert to the queue at the back
-        void push_back(struct deque *d, int v)
-        {
-            d->dq[d->r] = v;
-            d->r--;
-            if (d->r < 0)
-                d->r = d->capacity-1;
-            d->size++;
-        }
-
-        /// Delete the current (front) element from queue
-        void pop_front(struct deque *d)
-        {
-            d->f--;
-            if (d->f < 0)
-                d->f = d->capacity-1;
-            d->size--;
-        }
-
-        /// Delete the last element from queue
-        void pop_back(struct deque *d)
-        {
-            d->r = (d->r+1)%d->capacity;
-            d->size--;
-        }
-
-        /// Get the value at the current position of the circular queue
-        int front(struct deque *d)
-        {
-            int aux = d->f - 1;
-
-            if (aux < 0)
-                aux = d->capacity-1;
-            return d->dq[aux];
-        }
-
-        /// Get the value at the last position of the circular queueint back(struct deque *d)
-        int back(struct deque *d)
-        {
-            int aux = (d->r+1)%d->capacity;
-            return d->dq[aux];
-        }
-
-        /// Check whether or not the queue is empty
-        int empty(struct deque *d)
-        {
-            return d->size == 0;
-        }
-
-        /// Finding the envelop of min and max value for LB_Keogh
-        /// Implementation idea is intoruduced by Danial Lemire in his paper
-        /// "Faster Retrieval with a Two-Pass Dynamic-Time-Warping Lower Bound", Pattern Recognition 42(9), 2009.
-        void lower_upper_lemire(double *t, int len, int r, double *l, double *u)
-        {
-            struct deque du, dl;
-
-            init(&du, 2*r+2);
-            init(&dl, 2*r+2);
-
-            push_back(&du, 0);
-            push_back(&dl, 0);
-
-            for (int i = 1; i < len; i++)
-            {
-                if (i > r)
-                {
-                    u[i-r-1] = t[front(&du)];
-                    l[i-r-1] = t[front(&dl)];
-                }
-                if (t[i] > t[i-1])
-                {
-                    pop_back(&du);
-                    while (!empty(&du) && t[i] > t[back(&du)])
-                        pop_back(&du);
-                }
-                else
-                {
-                    pop_back(&dl);
-                    while (!empty(&dl) && t[i] < t[back(&dl)])
-                        pop_back(&dl);
-                }
-                push_back(&du, i);
-                push_back(&dl, i);
-                if (i == 2 * r + 1 + front(&du))
-                    pop_front(&du);
-                else if (i == 2 * r + 1 + front(&dl))
-                    pop_front(&dl);
-            }
-            for (int i = len; i < len+r+1; i++)
-            {
-                u[i-r-1] = t[front(&du)];
-                l[i-r-1] = t[front(&dl)];
-                if (i-front(&du) >= 2 * r + 1)
-                    pop_front(&du);
-                if (i-front(&dl) >= 2 * r + 1)
-                    pop_front(&dl);
-            }
-            destroy(&du);
-            destroy(&dl);
-        }
-    public:
-        double lower[QUERY_LEN];
-        double upper[QUERY_LEN];
-        LemireEnvelope() = default;
-        LemireEnvelope(double* t, int r) {
-            lower_upper_lemire(t, QUERY_LEN, r, lower, upper);
-        }
-        ~LemireEnvelope() {}
-    };
-
-    class CacheEntry {
-    public:
-        unsigned int time_series_pos;
-        double series_normalized[QUERY_LEN];
-        double* series_window;
-        double mean;
-        double stddev;
-        unsigned int fragment_length;
-        LemireEnvelope lemire_envelope;
-        CacheEntry(double* time_series, unsigned int position):
-            time_series_pos(position),
-            series_window(time_series + time_series_pos),
-            mean(0),
-            stddev(0)
-        {
-            double ex = 0, ex2 = 0;
-            for (fragment_length = 0; fragment_length + position != TIME_SERIES_LEN && fragment_length != QUERY_LEN; ++fragment_length) {
-                double d = series_window[fragment_length];
-                series_normalized[fragment_length] = d;
-                ex += d;
-                ex2 += d*d;
-            }
-            mean = ex/fragment_length;
-            stddev = ex2/fragment_length;
-            stddev = sqrt(stddev-mean*mean);
-            for(unsigned int i = 0; i != fragment_length; i++)
-                 series_normalized[i] = (series_normalized[i] - mean)/stddev;
-
-            lemire_envelope = LemireEnvelope(time_series + position, WARPING_r);
-        }
-        ~CacheEntry() {}
-    };
-    CacheEntry* cache; //holds a cache entry at each position within the time series
-    void initialize_cache() {
-        std::cerr << "Caching reusable data" << std::endl;
-        std::allocator<CacheEntry> cache_alloc;
-        for (int i = 0; i != TIME_SERIES_LEN; ++i) {
-            cache_alloc.construct(cache + i, time_series, i);
-            if ((i % 100000) == 0) {
-                std::cerr << i << "/" << TIME_SERIES_LEN << " (" << ((float)i / TIME_SERIES_LEN * 100) << "% complete)" << std::endl;
-            }
-        }
-    }
 public:
     MotifFinder() = delete;
-    MotifFinder(bool use_shared_cache, bool initialize_shared_cache): cache_uses_shared_memory(use_shared_cache) {
+    MotifFinder(bool use_shared_cache, bool initialize_shared_cache) {
         std::cerr << "Initializing motif finder engine" << std::endl;
         std::cerr << "Reading time series data file" << std::endl;
         std::ifstream in(SERIES_FILEPATH);
@@ -247,49 +61,12 @@ public:
         for (int i = 0; in >> point && i != TIME_SERIES_LEN; ++i)
             time_series[i] = point;
         in.close();
-
-        if (cache_uses_shared_memory) {
-            if (initialize_shared_cache) {
-                //this process is responsible for initializing the cache
-                //delete the shared memory file if it already exists
-                boost::interprocess::shared_memory_object::remove(SHARED_CACHE_MEMORYNAME);
-                boost::interprocess::shared_memory_object cache_shm(
-                    boost::interprocess::create_only,
-                    SHARED_CACHE_MEMORYNAME,
-                    boost::interprocess::read_write);
-
-                cache_shm.truncate(TIME_SERIES_LEN * sizeof(CacheEntry));
-                cache_memory_region = boost::interprocess::mapped_region(cache_shm, boost::interprocess::read_write);
-                cache = static_cast<CacheEntry*>(cache_memory_region.get_address());
-                initialize_cache();
-            } else {
-                //this process uses the shared cache memory that another process initialized
-                boost::interprocess::shared_memory_object cache_shm(
-                    boost::interprocess::open_only,
-                    SHARED_CACHE_MEMORYNAME,
-                    boost::interprocess::read_only);
-
-                cache_memory_region = boost::interprocess::mapped_region(cache_shm, boost::interprocess::read_only);
-                cache = static_cast<CacheEntry*>(cache_memory_region.get_address());
-            }
-        } else {
-            std::allocator<CacheEntry> cache_alloc;
-            std::cerr << "Allocating " << TIME_SERIES_LEN * sizeof(CacheEntry) << " bytes of memory" << std::endl;
-            cache = cache_alloc.allocate(TIME_SERIES_LEN);
-            initialize_cache();
-        }
+        cache = new cache_type(time_series);
     }
 
     ~MotifFinder() {
-        if (cache_uses_shared_memory) {
-            boost::interprocess::shared_memory_object::remove(SHARED_CACHE_MEMORYNAME);
-        } else {
-            std::allocator<CacheEntry> cache_alloc;
-            for (int i = 0; i != TIME_SERIES_LEN; ++i)
-                cache_alloc.destroy(cache + i);
-            cache_alloc.deallocate(cache, TIME_SERIES_LEN);
-        }
         delete[] time_series;
+        delete[] cache;
     }
 
     /// Data structure for sorting the query
