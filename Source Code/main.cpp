@@ -33,11 +33,11 @@
         return std::cerr;
     }
 
-    const std::string hostname() {
+    std::string hostname() {
         return boost::asio::ip::host_name();
     }
 
-    const bool is_root() {
+    bool is_root() {
         mpi::communicator world;
         return world.rank() == root_rank;
     }
@@ -70,14 +70,14 @@
         }
     }
 
-    const rank_id get_hostname_leader() {
+    rank_id get_hostname_leader() {
         elect_hostname_leaders();
         rank_id hostname_leader = hostname_leaders[hostname()];
         msg("Leader among ") << hostname() << " is " << hostname_leader << std::endl;
         return hostname_leader;
     }
 
-    const bool is_hostname_leader() {
+    bool is_hostname_leader() {
         mpi::communicator world;
         return world.rank() == get_hostname_leader();
     }
@@ -106,31 +106,32 @@
         return engine;
     }
 
-    const size_t query_start_position_by_params(size_t series_length, rank_id proc_rank, unsigned int num_procs) {
+    size_t query_start_position_by_params(size_t series_length, rank_id proc_rank, unsigned int num_procs) {
         proc_rank = num_procs - proc_rank; //make assignment easier to conceptualize
         size_t search_space_length = floor((float)proc_rank / num_procs * series_length * (series_length + 1.0) / 2.0);
         size_t position = ceil(-1.0 / 2.0 * sqrt(8.0 * search_space_length + 1.0) + series_length + 1.0 / 2.0);
         return position;
     }
 
-    const size_t my_query_start_pos() {
+    size_t my_query_start_pos() {
         mpi::communicator world;
         unsigned int num_procs = world.size();
         rank_id my_rank = world.rank();
         return query_start_position_by_params(TIME_SERIES_LEN, my_rank, num_procs);
     }
 
-    const size_t my_query_end_pos() {
+    size_t my_query_end_pos() {
         mpi::communicator world;
         unsigned int num_procs = world.size();
         rank_id my_rank = world.rank();
         return query_start_position_by_params(TIME_SERIES_LEN, my_rank + 1, num_procs);
     }
 
-    const std::string get_output_filename() {
+    std::string get_output_filename() {
+        mpi::communicator world;
         std::ostringstream filename;
         filename << "results" << world.rank() << ".out";
-        return filename.c_str();
+        return filename.str();
     }
 #else
     std::ostream& msg(std::string str) {
@@ -138,11 +139,11 @@
         return std::cerr;
     }
 
-    const size_t my_query_start_pos() {
+    size_t my_query_start_pos() {
         return 0;
     }
 
-    const size_t my_query_end_pos() {
+    size_t my_query_end_pos() {
         return TIME_SERIES_LEN;
     }
 
@@ -150,7 +151,7 @@
         return new MotifFinder(false, false);
     }
 
-    const std::string get_output_filename() {
+    std::string get_output_filename() {
         return "results.out";
     }
 
