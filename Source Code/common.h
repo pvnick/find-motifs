@@ -10,6 +10,7 @@
 #include <sstream>
 #include <fstream>
 #include <stdexcept>
+#include <iterator>
 
 //hardcoded values to prevent memory allocation
 #define TIME_SERIES_LEN 1663231
