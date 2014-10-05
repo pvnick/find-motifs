@@ -89,15 +89,7 @@ public:
     }
 };
 
-bool NonsharedCache::initialized = false;
-NonsharedCache::cache_ptr NonsharedCache::cache = cache_ptr(nullptr, NonsharedCache::deallocate_cache);
-
 #ifdef USE_MPI
-    #include <boost/mpi.hpp>
-    #include <boost/serialization/string.hpp>
-    #include <boost/serialization/map.hpp>
-    #include <boost/asio.hpp>
-    namespace mpi = boost::mpi;
 
 class SharedCache {
     static std::vector<boost::interprocess::mapped_region> cache;
@@ -327,9 +319,6 @@ public:
 
 };
 
-bool SharedCache::hostname_proc_layouts_constructed = false;
-size_t SharedCache::hostname_proc_count = 0;
-bool SharedCache::initialized = false;
 
 #endif // USE_MPI
 
