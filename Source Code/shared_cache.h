@@ -255,7 +255,7 @@ class SharedCache {
 
         msgl("Allocating shared cache fragment memory");
         my_fragment_shm.truncate(TIME_SERIES_LEN * sizeof(CacheEntry) / num_fragments + 1);
-        cache[my_fragment_id] = new boost::interprocess::mapped_region(my_fragment_shm, boost::interprocess::read_write);
+        cache[my_fragment_id] = new interprocess::mapped_region(my_fragment_shm, boost::interprocess::read_write);
         CacheEntry* fragment_cache_entries = static_cast<CacheEntry*>(cache[my_fragment_id]->get_address());
 
         msgl("Initializing cache fragment");
@@ -282,7 +282,7 @@ class SharedCache {
                     shared_fragment_name(i),
                     boost::interprocess::read_only);
 
-                cache[my_fragment_id] = new boost::interprocess::mapped_region(fragment_shm, boost::interprocess::read_only);
+                cache[my_fragment_id] = new interprocess::mapped_region(fragment_shm, boost::interprocess::read_only);
             }
         }
 

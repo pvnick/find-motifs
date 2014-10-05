@@ -21,10 +21,13 @@
 
 #ifdef USE_MPI
     #include <boost/mpi.hpp>
+    #include <boost/interprocess/shared_memory_object.hpp>
+    #include <boost/interprocess/mapped_region.hpp>
     #include <boost/serialization/string.hpp>
     #include <boost/serialization/map.hpp>
     #include <boost/asio.hpp>
     namespace mpi = boost::mpi;
+    namespace interprocess = boost::interprocess;
 
     unsigned int query_start_pos() {
         mpi::communicator world;
