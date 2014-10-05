@@ -388,11 +388,12 @@ public:
             ++curr_size;
             shrink_if_necessary();
         }
-        void print() {
+        std::ostream& operator>>(std::ostream& out) {
             Match* m;
             for (m = matches_head->next; m != nullptr; m = m->next) {
-                std::cout << m->loc << "," << m->dist << std::endl;
+                out << m->loc << "," << m->dist << std::endl;
             }
+            return out;
         }
     };
 
