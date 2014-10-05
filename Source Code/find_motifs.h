@@ -48,25 +48,9 @@ using namespace std;
 class MotifFinder {
 private:
     double* time_series;
-    cache_type* cache;
-
 public:
-    MotifFinder() = delete;
-    MotifFinder(bool use_shared_cache, bool initialize_shared_cache) {
-        std::cerr << "Initializing motif finder engine" << std::endl;
-        std::cerr << "Reading time series data file" << std::endl;
-        std::ifstream in(SERIES_FILEPATH);
-        time_series = new double[TIME_SERIES_LEN];
-        double point;
-        for (int i = 0; in >> point && i != TIME_SERIES_LEN; ++i)
-            time_series[i] = point;
-        in.close();
-        cache = new cache_type(time_series);
-    }
-
     ~MotifFinder() {
         delete[] time_series;
-        delete[] cache;
     }
 
     /// Data structure for sorting the query
@@ -109,10 +93,10 @@ public:
             return matches_head->next->dist;
         }
         TopKMatches(const size_t k, const size_t len, const size_t pos):
+            query_pos(pos),
             max_size(k),
             curr_size(0),
-            query_length(len),
-            query_pos(pos)
+            query_length(len)
         {
             matches_head = new Match();
             matches_head->is_dummy = true;
@@ -384,6 +368,7 @@ public:
     //argv[3] = query length
     TopKMatches single_pass(unsigned int K, const size_t query_position)
     {
+        cache_type cache;
         const CacheEntry& cached_query_data = cache[query_position];
         const double *q = cached_query_data.series_normalized;
         const unsigned int m = QUERY_LEN;
