@@ -33,6 +33,11 @@
         return std::cerr;
     }
 
+    std::ostream& msgl(std::string str) {
+        msg(str) << std::endl;
+        return std::cerr;
+    }
+
     const std::string hostname() {
         return boost::asio::ip::host_name();
     }
@@ -42,9 +47,21 @@
         return world.rank() == root_rank;
     }
 
+    const rank_id get_hostname_leader() {
+        rank_id hostname_leader = hostname_leaders[hostname()];
+        return hostname_leader;
+    }
+
+    const bool is_hostname_leader() {
+        mpi::communicator world;
+        return world.rank() == get_hostname_leader();
+    }
+
     void elect_hostname_leaders() {
         mpi::communicator world;
         if ( ! hostname_leaders_elected) {
+            msgl("Electing leaders");
+            hostname_leaders_elected = true;
             hostname_rank_pair my_hostname_rank(hostname(), world.rank());
             if (is_root()) {
                 std::vector<hostname_rank_pair> all_hostname_ranks;
@@ -59,27 +76,25 @@
                     else
                         hostname_leaders[hn] = std::min(hostname_leaders[hn], r); //leader rank is minimum rank for that hostname
                 }
+                msgl("I am the root node and I graciously bequeeth hostname leadership to the following ranks:");
+                for (auto iter: hostname_leaders)
+                    msg(iter.first) << ": " << iter.second << std::endl;
+                msgl("Broadcasting leadership roster");
                 mpi::broadcast(world, hostname_leaders, root_rank);
             } else {
                 //this proc is not the root, so send the hostname-rank pair to the root, then wait
                 //for the root to broadcast the leaders
                 mpi::gather(world, my_hostname_rank, root_rank);
                 mpi::broadcast(world, hostname_leaders, root_rank);
+                if (is_hostname_leader()) {
+                    msgl("I have been elected leader of") << hostname() << std::endl;
+                }
+                msgl("I have ");
+                for (auto iter: hostname_leaders)
+                    msg(iter.first) << ": " << iter.second << std::endl;
+                msg("Broadcasting leadership roster");
             }
-            hostname_leaders_elected = true;
         }
-    }
-
-    const rank_id get_hostname_leader() {
-        elect_hostname_leaders();
-        rank_id hostname_leader = hostname_leaders[hostname()];
-        msg("Leader among ") << hostname() << " is " << hostname_leader << std::endl;
-        return hostname_leader;
-    }
-
-    const bool is_hostname_leader() {
-        mpi::communicator world;
-        return world.rank() == get_hostname_leader();
     }
 
     MotifFinder* get_engine() {
@@ -129,12 +144,18 @@
 
     const std::string get_output_filename() {
         std::ostringstream filename;
+        mpi::communicator world;
         filename << "results" << world.rank() << ".out";
-        return filename.c_str();
+        return filename.str();
     }
 #else
     std::ostream& msg(std::string str) {
         std::cerr << str;
+        return std::cerr;
+    }
+
+    std::ostream& msgl(std::string str) {
+        msg(str) << std::endl;
         return std::cerr;
     }
 
@@ -161,6 +182,7 @@ int main(int argc , char *argv[] )
 {
 #ifdef USE_MPI
     mpi::environment env(argc, argv);
+    elect_hostname_leaders();
 #endif
     /*
     int num_procs = 100;
