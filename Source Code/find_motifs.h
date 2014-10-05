@@ -47,7 +47,7 @@
 #define QUERY_LEN 100
 #define WARPING_WINDOW 0.05
 #define WARPING_r (WARPING_WINDOW <= 1) ? (const int)(WARPING_WINDOW * QUERY_LEN) : (const int)WARPING_WINDOW
-#define SERIES_FILEPATH "/home/pvnick/oximetry.txt"
+#define SERIES_FILEPATH "/scratch/lfs/pvnick/oximetry.txt"
 #define SHARED_CACHE_MEMORYNAME "Shared motif finding engine cache"
 
 using namespace std;
@@ -274,6 +274,7 @@ public:
             }
         } else {
             std::allocator<CacheEntry> cache_alloc;
+            std::cerr << "Allocating " << TIME_SERIES_LEN * sizeof(CacheEntry) << " bytes of memory" << std::endl;
             cache = cache_alloc.allocate(TIME_SERIES_LEN);
             initialize_cache();
         }
@@ -306,6 +307,7 @@ public:
             Match* next;
         };
     private:
+        const size_t query_pos;
         const size_t max_size;
         size_t curr_size;
         const size_t query_length;
@@ -329,10 +331,11 @@ public:
             if (size() < max_size) return INF;
             return matches_head->next->dist;
         }
-        TopKMatches(const size_t k, const size_t len):
+        TopKMatches(const size_t k, const size_t len, const size_t pos):
             max_size(k),
             curr_size(0),
-            query_length(len)
+            query_length(len),
+            query_pos(pos)
         {
             matches_head = new Match();
             matches_head->is_dummy = true;
@@ -342,7 +345,7 @@ public:
             clear();
             delete matches_head;
         }
-        TopKMatches(const TopKMatches& src): TopKMatches(src.max_size, src.query_length) {
+        TopKMatches(const TopKMatches& src): TopKMatches(src.max_size, src.query_length, src.query_pos) {
             for (Match* m = src.matches_head->next; m != nullptr; m = m->next)
                 insert_match(m->loc, m->dist);
         }
@@ -350,12 +353,6 @@ public:
             while (size()) {
                 delete_weakest_match();
             }
-        }
-        TopKMatches& operator=(const TopKMatches& rhs) {
-            clear();
-            for (Match* m = rhs.matches_head->next; m != nullptr; m = m->next)
-                insert_match(m->loc, m->dist);
-            return *this;
         }
         Match* get_self_match_preceeding(long long loc) {
             Match* m = matches_head;
@@ -391,7 +388,7 @@ public:
         std::ostream& operator>>(std::ostream& out) {
             Match* m;
             for (m = matches_head->next; m != nullptr; m = m->next) {
-                out << m->loc << "," << m->dist << std::endl;
+                out << query_pos << "," << m->loc << "," << m->dist << std::endl;
             }
             return out;
         }
@@ -608,7 +605,7 @@ public:
     //argv[1] = timeseries file
     //argv[2] = query file
     //argv[3] = query length
-    TopKMatches single_pass(unsigned int K, unsigned int query_position)
+    TopKMatches single_pass(unsigned int K, const size_t query_position)
     {
         const CacheEntry& cached_query_data = cache[query_position];
         const double *q = cached_query_data.series_normalized;
@@ -672,7 +669,7 @@ public:
         int k=0;
 
         std::cerr << "starting: " << query_position << std::endl;
-        TopKMatches matches(100, m);
+        TopKMatches matches(100, m, query_position);
         for (size_t candidate_position = query_position + m; candidate_position < TIME_SERIES_LEN - m; ++candidate_position) {
             const CacheEntry& cached_candidate_data = cache[candidate_position];
             const double* l_buff = cached_candidate_data.lemire_envelope.lower;
