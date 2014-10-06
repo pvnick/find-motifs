@@ -8,35 +8,14 @@
 #define WARPING_r (WARPING_WINDOW <= 1) ? (const int)(WARPING_WINDOW * QUERY_LEN) : (const int)WARPING_WINDOW
 #define SERIES_FILEPATH "/scratch/lfs/pvnick/oximetry.txt"
 
-#include <iostream>
-#include <string>
-#include <utility>
-#include <algorithm>
-#include <sstream>
-#include <fstream>
-#include <stdexcept>
-#include <iterator>
-#include <cmath>
-#include <boost/mpi.hpp>
-#include <boost/interprocess/shared_memory_object.hpp>
-#include <boost/interprocess/mapped_region.hpp>
-#include <boost/serialization/string.hpp>
-#include <boost/serialization/map.hpp>
-#include <boost/asio.hpp>
-#include <cstdio>
-#include <stdlib.h>
-#include <ctime>
-#include <csignal>
-#include <memory>
-#include <vector>
+#include "common.h"
+#include "cache.h"
+#include "find_motifs.h"
 
-
-namespace mpi = boost::mpi;
-namespace interprocess = boost::interprocess;
 #ifdef USE_MPI
-    static bool use_mpi = true;
+    bool use_mpi = true;
 #else
-    static bool use_mpi = false;
+    bool use_mpi = false;
 #endif
 
 unsigned int query_start_pos() {
@@ -81,10 +60,6 @@ std::ostream& msg(std::string str) {
 std::ostream& msgl(std::string str) {
     return msg(str) << std::endl;
 }
-
-#include "lemire_envelope.h"
-#include "cache.h"
-#include "find_motifs.h"
 
 #ifdef USE_PROFILER
     #include "profiler.h"

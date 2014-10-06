@@ -1,6 +1,7 @@
 #ifndef _LEMIRE_ENVELOPE_H_
 #define _LEMIRE_ENVELOPE_H_
 
+#include "common.h"
 class LemireEnvelope {
 private:
     /// Data structure (circular array) for finding minimum and maximum for LB_Keogh envolop

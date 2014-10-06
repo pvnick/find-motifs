@@ -1,6 +1,8 @@
 #ifndef _CACHE_H_
 #define _CACHE_H_
 
+#include "common.h"
+#include "lemire_envelope.h"
 class CacheEntry;
 class NonsharedCache;
 class SharedCache;
