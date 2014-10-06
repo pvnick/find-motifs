@@ -290,7 +290,8 @@ class SharedCache: public Cache {
 public:
     SharedCache() = delete;
     SharedCache(double* series):
-        time_series(series)
+        time_series(series),
+        hostname_proc_layouts_constructed(false)
     {
         if (initialized) throw std::logic_error("Cache must be initialized only once");
         construct_hostname_proc_layouts();
