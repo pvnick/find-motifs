@@ -1,5 +1,5 @@
 //config
-#define USE_MPI
+//#define USE_MPI
 
 //hardcoded values to prevent memory allocation
 #define TIME_SERIES_LEN 1663231
