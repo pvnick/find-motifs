@@ -1,3 +1,5 @@
+//todo: I think this is possible to do without shared memory!
+//
 #ifndef _CACHE_H_
 #define _CACHE_H_
 
@@ -32,9 +34,10 @@ public:
         mean(0),
         stddev(0)
     {
+//todo: double-check the following logic
         double ex = 0, ex2 = 0;
         for (fragment_length = 0; fragment_length + position != TIME_SERIES_LEN && fragment_length != QUERY_LEN; ++fragment_length) {
-            double d = time_series[fragment_length];
+            double d = time_series[fragment_length + position];
             ex += d;
             ex2 += d*d;
         }
@@ -42,7 +45,7 @@ public:
         stddev = ex2/fragment_length;
         stddev = sqrt(stddev-mean*mean);
         for(unsigned int i = 0; i != fragment_length; i++) {
-             series_normalized[i] = (time_series[i] - mean)/stddev;
+             series_normalized[i] = (time_series[i + position] - mean)/stddev;
         }
         lemire_envelope = LemireEnvelope(time_series + position, WARPING_r);
     }
@@ -294,7 +297,6 @@ size_t entries = 0;
             }
 */
         }
-msg(" constructed ") << entries << " entries" << std::endl;
 
         msgl("Waiting for hostname ring sync");
         sync_hostname_ring();
@@ -303,12 +305,10 @@ msg(" constructed ") << entries << " entries" << std::endl;
         msgl("Fetching all cache fragments for fast reference");
         for (size_t i = 0; i != num_fragments; ++i) {
             if (i != my_fragment_id) { 
-msg("") << __LINE__ << std::endl;
                 boost::interprocess::shared_memory_object shm_fragment (
                     boost::interprocess::open_only,
                     shared_fragment_name(i).c_str(),
                     boost::interprocess::read_only);
-msg("") << __LINE__ << std::endl;
                 region_alloc.construct(cache + i,
                     shm_fragment,
                     boost::interprocess::read_only);
@@ -344,8 +344,8 @@ public:
     const CacheEntry& operator[](size_t position) const {
         size_t fragment_id = fragment_id_from_timeseries_position(position);
         ptrdiff_t fragment_position = fragment_position_from_timeseries_position(position);
-        CacheEntry* entry = static_cast<CacheEntry*>(cache[fragment_id].get_address()) + fragment_position;
-        return *entry;
+        CacheEntry* entries = static_cast<CacheEntry*>(cache[fragment_id].get_address());
+        return entries[fragment_position];
 /*
         boost::interprocess::shared_memory_object shm_fragment (
             boost::interprocess::open_only,
