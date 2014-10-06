@@ -1,27 +1,13 @@
 # depslib dependency file v1.0
-1412549793 source:/home/pvnick/Downloads/ucrsuite/Source Code/main.cpp
+1412554975 source:/home/pvnick/Downloads/ucrsuite/Source Code/main.cpp
 	"common.h"
 	"find_motifs.h"
-	<cstdio>
-	<csignal>
 	"profiler.h"
 
-1412549167 /home/pvnick/Downloads/ucrsuite/Source Code/find_motifs.h
-	<stdio.h>
-	<stdlib.h>
-	<math.h>
-	<time.h>
-	<iostream>
-	<fstream>
-	<string>
-	<memory>
-	<cassert>
-	<boost/interprocess/shared_memory_object.hpp>
-	<boost/interprocess/mapped_region.hpp>
-	<algorithm>
-	"shared_cache.h"
+1412555216 /home/pvnick/Downloads/ucrsuite/Source Code/find_motifs.h
+	"cache.h"
 
-1412549812 /home/pvnick/Downloads/ucrsuite/Source Code/common.h
+1412554965 /home/pvnick/Downloads/ucrsuite/Source Code/common.h
 	<iostream>
 	<string>
 	<utility>
@@ -29,10 +15,20 @@
 	<sstream>
 	<fstream>
 	<stdexcept>
+	<iterator>
+	<cmath>
 	<boost/mpi.hpp>
+	<boost/interprocess/shared_memory_object.hpp>
+	<boost/interprocess/mapped_region.hpp>
 	<boost/serialization/string.hpp>
 	<boost/serialization/map.hpp>
 	<boost/asio.hpp>
+	<cstdio>
+	<stdlib.h>
+	<ctime>
+	<csignal>
+	<memory>
+	<vector>
 
 1412549690 /home/pvnick/Downloads/ucrsuite/Source Code/shared_cache.h
 	"common.h"
@@ -45,4 +41,7 @@
 	<boost/asio.hpp>
 
 1412543825 /home/pvnick/Downloads/ucrsuite/Source Code/lemire_envelope.h
+
+1412555189 /home/pvnick/Downloads/ucrsuite/Source Code/cache.h
+	"lemire_envelope.h"
 
