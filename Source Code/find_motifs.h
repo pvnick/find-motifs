@@ -426,7 +426,6 @@ public:
             const CacheEntry& cached_candidate_data = cache[candidate_position];
             const double* l_buff = cached_candidate_data.lemire_envelope.lower;
             const double* u_buff = cached_candidate_data.lemire_envelope.upper;
-
             mean = cached_candidate_data.mean;
             stddev = cached_candidate_data.stddev;
 

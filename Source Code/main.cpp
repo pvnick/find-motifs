@@ -1,5 +1,5 @@
 //config
-//#define USE_MPI
+#define USE_MPI
 
 //hardcoded values to prevent memory allocation
 #define TIME_SERIES_LEN 1663231
@@ -11,6 +11,7 @@
 #include "common.h"
 #include "cache.h"
 #include "find_motifs.h"
+
 
 #ifdef USE_MPI
     bool use_mpi = true;
@@ -75,6 +76,7 @@ void sighandler(int sig)
     delete cache;
     exit(1);
 }
+
 
 /// Main Function
 int main(int argc, char *argv[])
