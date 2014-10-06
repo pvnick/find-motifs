@@ -65,11 +65,14 @@ std::ostream& msgl(std::string str) {
     #include "profiler.h"
 #endif
 
+static Cache* cache;
+
+//todo: test that this function is even necessary
 void sighandler(int sig)
 {
     //dont leave shared memory regions lying around (I don't know
     //what would happen, but it doesn't sound like a good idea)
-    cache_type::destroy();
+    delete cache;
     exit(1);
 }
 
@@ -95,13 +98,13 @@ int main(int argc, char *argv[])
     for (int i = 0; in >> point && i != TIME_SERIES_LEN; ++i)
         time_series[i] = point;
     in.close();
-    cache_type::init(time_series);
 
     signal(SIGABRT, &sighandler);
 	signal(SIGTERM, &sighandler);
 	signal(SIGINT, &sighandler);
 
-    MotifFinder engine;
+    cache = new cache_type(time_series);
+    MotifFinder engine(time_series, *cache);
 
     std::ofstream out(std::string("/scratch/lfs/pvnick/motif_results/") + get_output_filename(),
                       std::ofstream::out | std::ofstream::trunc);
@@ -114,7 +117,10 @@ int main(int argc, char *argv[])
         results >> out;
         msgl("Query complete");
     }
+    delete[] time_series;
+
     out.close();
+    delete cache;
 #ifdef USE_PROFILER
     ProfilerStop();
 #endif

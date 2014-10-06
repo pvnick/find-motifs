@@ -36,11 +36,13 @@ using namespace std;
 
 class MotifFinder {
 private:
-    double* time_series;
+    const double* time_series;
+    const Cache& cache;
 public:
-    ~MotifFinder() {
-        delete[] time_series;
-    }
+
+    MotifFinder(const double* series, const Cache& cache_instance):
+        time_series(series),
+        cache(cache_instance) {}
 
     /// Data structure for sorting the query
     typedef struct Index
@@ -357,7 +359,6 @@ public:
     //argv[3] = query length
     TopKMatches single_pass(unsigned int K, const size_t query_position)
     {
-        cache_type cache;
         const CacheEntry& cached_query_data = cache[query_position];
         const double *q = cached_query_data.series_normalized;
         const unsigned int m = QUERY_LEN;

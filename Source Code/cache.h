@@ -7,6 +7,12 @@ class CacheEntry;
 class NonsharedCache;
 class SharedCache;
 
+class Cache {
+public:
+    virtual const CacheEntry& operator[](size_t position) const;
+    virtual ~Cache();
+};
+
 #ifdef USE_MPI
     typedef SharedCache cache_type;
 #else
@@ -47,10 +53,10 @@ public:
 };
 
 //todo: consider polymorphism here
-class NonsharedCache {
+class NonsharedCache: public Cache {
 private:
     typedef std::unique_ptr<CacheEntry[], void(*)(CacheEntry*)> cache_ptr;
-    static cache_ptr cache;
+    cache_ptr cache;
     static void deallocate_cache(CacheEntry* cache_entries) {
         std::allocator<CacheEntry> cache_alloc;
         for (int i = 0; i != TIME_SERIES_LEN; ++i)
@@ -59,71 +65,64 @@ private:
     }
     static bool initialized;
 public:
-    static void destroy() {}
+    NonsharedCache() = delete;
 
-    static void init(double* series) {
-        if ( ! initialized) {
-            std::cerr << "Nonshared cache: Allocating " << TIME_SERIES_LEN * sizeof(CacheEntry) << " bytes of memory" << std::endl;
-            std::allocator<CacheEntry> cache_alloc;
-            std::cerr << "Caching reusable data" << std::endl;
-            CacheEntry* tmp_cache = cache_alloc.allocate(TIME_SERIES_LEN);
-            for (int i = 0; i != TIME_SERIES_LEN; ++i) {
-                cache_alloc.construct(tmp_cache + i, series, i);
-                if ((i % 100000) == 0) {
-                    std::cerr << i << "/" << TIME_SERIES_LEN << " (" << ((float)i / TIME_SERIES_LEN * 100) << "% complete)" << std::endl;
-                }
+    NonsharedCache(double* time_series): cache(nullptr, &NonsharedCache::deallocate_cache) {
+        if (initialized) throw std::logic_error("Cache must be initialized only once");
+        std::cerr << "Nonshared cache: Allocating " << TIME_SERIES_LEN * sizeof(CacheEntry) << " bytes of memory" << std::endl;
+        std::allocator<CacheEntry> cache_alloc;
+        std::cerr << "Caching reusable data" << std::endl;
+        CacheEntry* tmp_cache = cache_alloc.allocate(TIME_SERIES_LEN);
+        for (int i = 0; i != TIME_SERIES_LEN; ++i) {
+            cache_alloc.construct(tmp_cache + i, time_series, i);
+            if ((i % 100000) == 0) {
+                std::cerr << i << "/" << TIME_SERIES_LEN << " (" << ((float)i / TIME_SERIES_LEN * 100) << "% complete)" << std::endl;
             }
-            cache.reset(tmp_cache);
-            initialized = true;
         }
+        cache.reset(tmp_cache);
+        initialized = true;
     }
 
-    NonsharedCache() {
-        if ( ! initialized) throw std::logic_error("Cache must be initialized before use");
-    }
-
-    const CacheEntry& operator[](size_t position) {
+    const CacheEntry& operator[](size_t position) const {
         return cache[position];
     }
 };
-
 bool NonsharedCache::initialized = false;
-NonsharedCache::cache_ptr NonsharedCache::cache = cache_ptr(nullptr, NonsharedCache::deallocate_cache);
 
-class SharedCache {
-    static std::vector<boost::interprocess::mapped_region*> cache;
-    static double* time_series;
+class SharedCache: public Cache {
+    std::vector<boost::interprocess::mapped_region*> cache;
+    double* time_series;
 
     typedef unsigned int rank_id;
     typedef unsigned int rank_id_within_hostname;
     typedef std::map<rank_id, rank_id_within_hostname> hostname_proc_layout;
     typedef std::pair<std::string, rank_id> hostname_rank_pair;
 
-    const static rank_id root_rank = 0;
-    static std::map<std::string, hostname_proc_layout> hostname_proc_layouts;
-    static bool hostname_proc_layouts_constructed;
-    static size_t hostname_proc_count;
+    const rank_id root_rank = 0;
+    std::map<std::string, hostname_proc_layout> hostname_proc_layouts;
+    bool hostname_proc_layouts_constructed;
+    size_t hostname_proc_count;
     static bool initialized;
 
-    static rank_id rank() {
+    rank_id rank() {
         mpi::communicator world;
         return world.rank();
     }
 
-    static size_t num_procs() {
+    size_t num_procs() {
         mpi::communicator world;
         return world.size();
     }
 
-    static bool is_root() {
+    bool is_root() {
         return rank() == root_rank;
     }
 
-    static std::string hostname() {
+    std::string hostname() {
         return boost::asio::ip::host_name();
     }
 
-    static hostname_proc_layout get_my_hostname_proc_layout() {
+    hostname_proc_layout get_my_hostname_proc_layout() {
         std::string my_hostname = hostname();
         if (hostname_proc_layouts.find(my_hostname) == hostname_proc_layouts.end()) {
             throw std::runtime_error("Hostname not found");
@@ -131,7 +130,7 @@ class SharedCache {
         return hostname_proc_layouts[my_hostname];
     }
 
-    static rank_id_within_hostname get_my_intrahostname_rank() {
+    rank_id_within_hostname get_my_intrahostname_rank() {
         hostname_proc_layout my_hostname_layout = get_my_hostname_proc_layout();
         rank_id my_rank = rank();
         if (my_hostname_layout.find(my_rank) == my_hostname_layout.end()) {
@@ -140,11 +139,11 @@ class SharedCache {
         return my_hostname_layout[my_rank];
     }
 
-    static size_t num_hostname_procs() {
+    size_t num_hostname_procs() const {
         return hostname_proc_count;
     }
 
-    static void construct_hostname_proc_layouts() {
+    void construct_hostname_proc_layouts() {
         mpi::communicator world;
         if ( ! hostname_proc_layouts_constructed) {
             msgl("Constructing hostname proc layouts");
@@ -181,7 +180,7 @@ class SharedCache {
         }
     }
 
-    static void sync_hostname_ring() {
+    void sync_hostname_ring() {
         //treat all procs in the hostname as existing in a ring
         //a proc is chosen as the first proc. that proc sends a signal to its next proc, etc,
         //all around the ring until the last proc receives the signal and tells the first proc
@@ -220,21 +219,21 @@ class SharedCache {
         mpi::wait_all(reqs, reqs + 2);
     }
 
-    static const char* shared_fragment_name(size_t fragment_id) {
+    const char* shared_fragment_name(size_t fragment_id) {
         std::ostringstream name;
         name << "Motif finder cache fragment " << fragment_id;
         return name.str().c_str();
     }
 
-    static size_t fragment_id_from_timeseries_position(size_t position) {
+    size_t fragment_id_from_timeseries_position(size_t position) const {
         return position / num_hostname_procs();
     }
 
-    static size_t fragment_position_from_timeseries_position(size_t position) {
+    size_t fragment_position_from_timeseries_position(size_t position) const {
         return position % num_hostname_procs();
     }
 
-    static void initialize_cache_fragments() {
+    void initialize_cache_fragments() {
         //treat all procs in the hostname as existing in a ring
         //a proc is chosen to initialize its shared cache fragment. that proc tells the next proc to
         //initialize its fragment, etc, until the last proc receives the signal and tells the first proc.
@@ -287,27 +286,25 @@ class SharedCache {
 
         msgl("Shared cache successfully constructed");
     }
+
 public:
-    static void init(double* series) {
-        if ( ! initialized) {
-            time_series = series;
-            construct_hostname_proc_layouts();
-            cache = std::vector<boost::interprocess::mapped_region*>(num_hostname_procs());
-            initialize_cache_fragments();
-            initialized = true;
-        }
+    SharedCache() = delete;
+    SharedCache(double* series):
+        time_series(series)
+    {
+        if (initialized) throw std::logic_error("Cache must be initialized only once");
+        construct_hostname_proc_layouts();
+        cache = std::vector<boost::interprocess::mapped_region*>(num_hostname_procs());
+        initialize_cache_fragments();
+        initialized = true;
     }
 
-    static void destroy() {
+    ~SharedCache() {
         const char* my_fragment_name = shared_fragment_name(get_my_intrahostname_rank());
         boost::interprocess::shared_memory_object::remove(my_fragment_name);
     }
 
-    SharedCache() {
-        if ( ! initialized) throw std::logic_error("Shared cache must be initialized before use");
-    }
-
-    const CacheEntry& operator[](size_t position) {
+    const CacheEntry& operator[](size_t position) const {
         size_t fragment_id = fragment_id_from_timeseries_position(position);
         boost::interprocess::mapped_region* fragment = cache[fragment_id];
         CacheEntry* fragment_cache_entries = static_cast<CacheEntry*>(fragment->get_address());
@@ -318,8 +315,6 @@ public:
 
 };
 
-bool SharedCache::hostname_proc_layouts_constructed = false;
-size_t SharedCache::hostname_proc_count = 0;
 bool SharedCache::initialized = false;
 
 #endif // _CACHE_H_
