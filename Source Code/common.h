@@ -28,6 +28,7 @@ namespace mpi = boost::mpi;
 namespace interprocess = boost::interprocess;
 
 extern bool use_mpi;
+extern std::string global_shm_tag;
 extern unsigned int query_start_pos();
 extern unsigned int search_increment();
 extern std::string get_output_filename();

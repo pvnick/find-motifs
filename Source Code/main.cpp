@@ -12,6 +12,8 @@
 #include "cache.h"
 #include "find_motifs.h"
 
+static std::string global_shm_tag;
+
 #ifdef USE_MPI
     bool use_mpi = true;
 #else
@@ -76,9 +78,12 @@ void sighandler(int sig)
     exit(1);
 }
 
+
 /// Main Function
 int main(int argc, char *argv[])
 {
+    srand(time(0));
+    global_shm_tag = std::to_string((unsigned long long)rand());
 #ifdef USE_MPI
     mpi::environment env(argc, argv);
 #endif
@@ -114,7 +119,7 @@ int main(int argc, char *argv[])
     {
         msg("Querying from ") << i << std::endl;
         MotifFinder::TopKMatches results = engine.single_pass(K, i);
-        results >> std::cout;
+        results >> out;
         msgl("Query complete");
     }
     delete[] time_series;

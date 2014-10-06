@@ -218,9 +218,10 @@ class SharedCache: public Cache {
         }
     }
 
-    const char* shared_fragment_name(size_t fragment_id) {
+    const char* shared_fragment_name(size_t fragment_id) const {
         std::ostringstream name;
-        name << "Motif finder cache fragment " << fragment_id;
+        name << "Motif finder cache fragment " << global_shm_tag << " - " << fragment_id;
+        msg("looking for ") << name.str() << std::endl;
         return name.str().c_str();
     }
 
@@ -248,19 +249,19 @@ class SharedCache: public Cache {
         size_t num_fragments = num_hostname_procs();
         const char* fragment_name = shared_fragment_name(my_fragment_id);
 
-        msg("Creating shared memory object \"") << fragment_name << "\"" << std::endl;
+        msg("Allocating shared memory \"") << fragment_name << "\"" << std::endl;
         boost::interprocess::shared_memory_object::remove(fragment_name);
-        boost::interprocess::shared_memory_object my_fragment_shm(
+        boost::interprocess::shared_memory_object shm_fragment (
             boost::interprocess::create_only,
             fragment_name,
             boost::interprocess::read_write);
 
-        msgl("Allocating shared cache fragment memory");
-        std::allocator<boost::interprocess::mapped_region> region_alloc;
         size_t bucket_size = TIME_SERIES_LEN / num_hostname_procs();
         size_t num_entries = TIME_SERIES_LEN - my_fragment_id * bucket_size; //last bucket may hold a few more entries
-        my_fragment_shm.truncate(num_entries * sizeof(CacheEntry));
-        region_alloc.construct(cache + my_fragment_id, my_fragment_shm, boost::interprocess::read_write);
+        shm_fragment.truncate(num_entries * sizeof(CacheEntry));
+
+        std::allocator<boost::interprocess::mapped_region> region_alloc;
+        region_alloc.construct(cache + my_fragment_id, shm_fragment, boost::interprocess::read_write);
         CacheEntry* fragment_cache_entries = static_cast<CacheEntry*>(cache[my_fragment_id].get_address());
 
         msgl("Initializing cache fragment");
@@ -270,24 +271,36 @@ class SharedCache: public Cache {
                 size_t pos = fragment_position_from_timeseries_position(i);
                 cache_alloc.construct(fragment_cache_entries + pos, time_series, i);
             }
-            if ((i % 100000) == 0) {
+/*            if ((i % 100000) == 0) {
                 msg("Fragment ") << i << "/" << TIME_SERIES_LEN << " (" << ((float)i / TIME_SERIES_LEN * 100) << "% complete)" << std::endl;
             }
+*/
         }
 
         msgl("Waiting for hostname ring sync");
         sync_hostname_ring();
         msgl("Ring synced");
+/*
 
         msgl("Fetching all cache fragments for fast reference");
         for (size_t i = 0; i != num_fragments; ++i) {
-            boost::interprocess::shared_memory_object fragment_shm(
-                boost::interprocess::open_only,
-                shared_fragment_name(i),
-                boost::interprocess::read_only);
-            region_alloc.construct(cache + i, fragment_shm, boost::interprocess::read_only); 
+            if (i != my_fragment_id) { 
+msg("") << __LINE__ << std::endl;
+                boost::interprocess::shared_memory_object shm_fragment (
+                    boost::interprocess::open_only,
+                    shared_fragment_name(i),
+                    boost::interprocess::read_only);
+msgl("sleeping");
+sleep(2);
+msg("") << __LINE__ << std::endl;
+                region_alloc.construct(cache + i,
+                    shm_fragment,
+                    boost::interprocess::read_only);
+msgl("sleeping");
+sleep(2);
+            }
         }
-
+*/
         msgl("Shared cache successfully constructed");
     }
 
@@ -299,26 +312,40 @@ public:
     {
         if (initialized) throw std::logic_error("Cache must be initialized only once");
         construct_hostname_proc_layouts();
-        std::allocator<boost::interprocess::mapped_region> alloc;
-        cache = alloc.allocate(num_hostname_procs());
+        std::allocator<boost::interprocess::mapped_region> region_alloc;
+        cache = region_alloc.allocate(num_hostname_procs());
         initialize_cache_fragments();
         initialized = true;
     }
 
     ~SharedCache() {
+msgl("sleeping");
+sleep(2);
         const char* my_fragment_name = shared_fragment_name(get_my_intrahostname_rank());
+msgl("sleeping");
+sleep(2);
         boost::interprocess::shared_memory_object::remove(my_fragment_name);
-        std::allocator<boost::interprocess::mapped_region> alloc;
+        std::allocator<boost::interprocess::mapped_region> region_alloc;
         for (size_t i = 0; i != num_hostname_procs(); ++i)
-            alloc.destroy(cache + i);
-        alloc.deallocate(cache, num_hostname_procs());
+            region_alloc.destroy(cache + i);
+        region_alloc.deallocate(cache, num_hostname_procs());
     }
 
     const CacheEntry& operator[](size_t position) const {
         size_t fragment_id = fragment_id_from_timeseries_position(position);
-        boost::interprocess::mapped_region& fragment = cache[fragment_id];
         ptrdiff_t fragment_position = fragment_position_from_timeseries_position(position);
-        CacheEntry* entry = static_cast<CacheEntry*>(fragment.get_address() + fragment_position);
+/*msg("") << cache[fragment_id].get_address() << std::endl;
+       CacheEntry* entry = static_cast<CacheEntry*>(cache[fragment_id].get_address()) + fragment_position;
+        return *entry;
+*/
+        boost::interprocess::shared_memory_object shm_fragment (
+            boost::interprocess::open_only,
+            shared_fragment_name(fragment_id),
+            boost::interprocess::read_only);
+        boost::interprocess::mapped_region region(
+            shm_fragment,
+            boost::interprocess::read_only);
+        CacheEntry* entry = static_cast<CacheEntry*>(region.get_address()) + fragment_position;
         return *entry;
     }
 
