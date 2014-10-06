@@ -9,7 +9,7 @@ class SharedCache;
 
 class Cache {
 public:
-    virtual const CacheEntry& operator[](size_t position) const {};
+    virtual const CacheEntry& operator[](size_t position) const{};
     virtual ~Cache() {};
 };
 
