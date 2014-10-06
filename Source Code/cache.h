@@ -9,8 +9,8 @@ class SharedCache;
 
 class Cache {
 public:
-    virtual const CacheEntry& operator[](size_t position) const;
-    virtual ~Cache();
+    virtual const CacheEntry& operator[](size_t position) const {};
+    virtual ~Cache() {};
 };
 
 #ifdef USE_MPI
