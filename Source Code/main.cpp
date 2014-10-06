@@ -12,7 +12,6 @@
 #include "cache.h"
 #include "find_motifs.h"
 
-static std::string global_shm_tag;
 
 #ifdef USE_MPI
     bool use_mpi = true;
@@ -82,8 +81,6 @@ void sighandler(int sig)
 /// Main Function
 int main(int argc, char *argv[])
 {
-    srand(time(0));
-    global_shm_tag = std::to_string((unsigned long long)rand());
 #ifdef USE_MPI
     mpi::environment env(argc, argv);
 #endif
