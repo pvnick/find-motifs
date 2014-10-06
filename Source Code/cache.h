@@ -1,7 +1,5 @@
 #ifndef _CACHE_H_
 #define _CACHE_H_
-#include "common.h"
-#include "lemire_envelope.h"
 
 class CacheEntry;
 class NonsharedCache;
@@ -86,6 +84,9 @@ public:
         return cache[position];
     }
 };
+
+bool NonsharedCache::initialized = false;
+NonsharedCache::cache_ptr NonsharedCache::cache = cache_ptr(nullptr, NonsharedCache::deallocate_cache);
 
 class SharedCache {
     static std::vector<boost::interprocess::mapped_region*> cache;
@@ -314,5 +315,9 @@ public:
     }
 
 };
+
+bool SharedCache::hostname_proc_layouts_constructed = false;
+size_t SharedCache::hostname_proc_count = 0;
+bool SharedCache::initialized = false;
 
 #endif // _CACHE_H_
