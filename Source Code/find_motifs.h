@@ -424,9 +424,12 @@ public:
         TopKMatches matches(100, m, query_position);
         for (size_t candidate_position = query_position + m; candidate_position < TIME_SERIES_LEN - m; ++candidate_position) {
             const CacheEntry& cached_candidate_data = cache[candidate_position];
+            std::cout << cached_candidate_data.series_normalized[0] << " ";
+            std::cout << cached_candidate_data.series_normalized[1] << " ";
+            std::cout << cached_candidate_data.series_normalized[2] << " ";
+            std::cout << cached_candidate_data.series_normalized[3] << std::endl;
             const double* l_buff = cached_candidate_data.lemire_envelope.lower;
             const double* u_buff = cached_candidate_data.lemire_envelope.upper;
-
             mean = cached_candidate_data.mean;
             stddev = cached_candidate_data.stddev;
 

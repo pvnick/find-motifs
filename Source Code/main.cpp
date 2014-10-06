@@ -1,5 +1,5 @@
 //config
-//#define USE_MPI
+#define USE_MPI
 
 //hardcoded values to prevent memory allocation
 #define TIME_SERIES_LEN 1663231
@@ -114,7 +114,7 @@ int main(int argc, char *argv[])
     {
         msg("Querying from ") << i << std::endl;
         MotifFinder::TopKMatches results = engine.single_pass(K, i);
-        results >> out;
+        results >> std::cout;
         msgl("Query complete");
     }
     delete[] time_series;
