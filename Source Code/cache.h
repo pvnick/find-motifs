@@ -191,32 +191,34 @@ class SharedCache: public Cache {
         auto my_globalrank_hnrank = globalrank_hnrank;
         rank_id prev_proc;
         rank_id next_proc;
+        mpi::communicator world;
+        int token;
         if (my_globalrank_hnrank == my_hostname_layout.begin()) {
             //i am the first proc in the ring
             auto tmp = my_hostname_layout.end();
             prev_proc = (--tmp)->first;
             tmp = my_globalrank_hnrank;
             next_proc = (++tmp)->first;
+            token = 1;
+            world.send(next_proc, next_proc, token);
+            world.recv(prev_proc, rank(), token);
         } else if (my_globalrank_hnrank == --my_hostname_layout.end()) {
             //i am the last proc in the ring
             auto tmp = my_globalrank_hnrank;
             prev_proc = (--tmp)->first;
             tmp = my_hostname_layout.begin();
             next_proc = tmp->first;
+            world.recv(prev_proc, rank(), token);
+            world.send(next_proc, next_proc, token);
         } else {
             //i am somewhere in the middle of the ring
             auto tmp = my_globalrank_hnrank;
             prev_proc = (--tmp)->first;
             tmp = my_globalrank_hnrank;
             next_proc = (++tmp)->first;
+            world.recv(prev_proc, rank(), token);
+            world.send(next_proc, next_proc, token);
         }
-
-        mpi::communicator world;
-        mpi::request reqs[2];
-        bool send_val = true, recv_val;
-        reqs[0] = world.isend(next_proc, rank(), send_val);
-        reqs[1] = world.irecv(prev_proc, rank(), recv_val);
-        mpi::wait_all(reqs, reqs + 2);
     }
 
     const char* shared_fragment_name(size_t fragment_id) {
