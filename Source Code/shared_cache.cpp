@@ -1,5 +1,4 @@
-#include "common.h"
-#include "shared_cache.h"
+#include "cache.h"
 
 bool NonsharedCache::initialized = false;
 NonsharedCache::cache_ptr NonsharedCache::cache = cache_ptr(nullptr, NonsharedCache::deallocate_cache);

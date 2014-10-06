@@ -1,8 +1,10 @@
-#include "common.h"
+//config
 
+#define USE_MPI
+
+
+#include "common.h"
 #include "find_motifs.h"
-#include <cstdio>
-#include <csignal>
 
 #ifdef USE_PROFILER
     #include "profiler.h"

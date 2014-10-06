@@ -1,9 +1,7 @@
-#ifndef _SHARED_CACHE_H_
-#define _SHARED_CACHE_H_
+#ifndef _CACHE_H_
+#define _CACHE_H_
 #include "common.h"
 #include "lemire_envelope.h"
-#include <memory>
-#include <vector>
 
 class CacheEntry;
 class NonsharedCache;
@@ -88,8 +86,6 @@ public:
         return cache[position];
     }
 };
-
-#ifdef USE_MPI
 
 class SharedCache {
     static std::vector<boost::interprocess::mapped_region*> cache;
@@ -319,8 +315,4 @@ public:
 
 };
 
-
-#endif // USE_MPI
-
-
-#endif // _SHARED_CACHE_H_
+#endif // _CACHE_H_
