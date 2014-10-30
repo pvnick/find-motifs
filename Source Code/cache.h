@@ -5,6 +5,7 @@
 
 #include "common.h"
 #include "lemire_envelope.h"
+#include <limits>
 class CacheEntry;
 class NonsharedCache;
 class SharedCache;
@@ -27,6 +28,7 @@ public:
     double series_normalized[QUERY_LEN];
     double mean;
     double stddev;
+    double range;
     unsigned int fragment_length;
     LemireEnvelope lemire_envelope;
     CacheEntry(double* time_series, unsigned int position):
@@ -36,6 +38,8 @@ public:
     {
 //todo: double-check the following logic
         double ex = 0, ex2 = 0;
+        double min = std::numeric_limits<double>::max(),
+               max = std::numeric_limits<double>::min();
         for (fragment_length = 0; fragment_length + position != TIME_SERIES_LEN && fragment_length != QUERY_LEN; ++fragment_length) {
             double d = time_series[fragment_length + position];
             ex += d;
@@ -45,9 +49,13 @@ public:
         stddev = ex2/fragment_length;
         stddev = sqrt(stddev-mean*mean);
         for(unsigned int i = 0; i != fragment_length; i++) {
-             series_normalized[i] = (time_series[i + position] - mean)/stddev;
+             double d = time_series[i + position];
+             series_normalized[i] = (d - mean)/stddev;
+             if (d > max) max = d;
+             if (d < min) min = d;
         }
         lemire_envelope = LemireEnvelope(time_series + position, WARPING_r);
+        range = max - min;
     }
     ~CacheEntry() {}
 };

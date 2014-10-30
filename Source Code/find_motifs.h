@@ -362,6 +362,11 @@ public:
         const CacheEntry& cached_query_data = cache[query_position];
         const double *q = cached_query_data.series_normalized;
         const unsigned int m = QUERY_LEN;
+        TopKMatches matches(100, m, query_position);
+        if (cached_query_data.range < MIN_RANGE) {
+            msgl("Range is too small, skipping");
+            return matches;   
+        }
 
         double bsf;          /// best-so-far
         //double *u, *l;
@@ -421,9 +426,11 @@ public:
         int k=0;
 
         std::cerr << "starting: " << query_position << std::endl;
-        TopKMatches matches(100, m, query_position);
         for (size_t candidate_position = query_position + m; candidate_position < TIME_SERIES_LEN - m; ++candidate_position) {
             const CacheEntry& cached_candidate_data = cache[candidate_position];
+            if (cached_candidate_data.range < MIN_RANGE) {
+                continue;
+            }
             const double* l_buff = cached_candidate_data.lemire_envelope.lower;
             const double* u_buff = cached_candidate_data.lemire_envelope.upper;
             mean = cached_candidate_data.mean;
