@@ -34,4 +34,8 @@ extern std::string get_output_filename();
 extern std::ostream& msg(std::string str);
 extern std::ostream& msgl(std::string str);
 
+double lg(double x) {
+    return log(x) / log(2);
+}
+
 #endif // _COMMON_H_

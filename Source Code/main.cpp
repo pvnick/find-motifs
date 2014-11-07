@@ -10,9 +10,8 @@
 #define SERIES_FILEPATH "/scratch/lfs/pvnick/oximetry.txt"
 
 #include "common.h"
-#include "cache.h"
 #include "find_motifs.h"
-
+#include "ucr_dtw.h"
 
 #ifdef USE_MPI
     bool use_mpi = true;
@@ -20,21 +19,27 @@
     bool use_mpi = false;
 #endif
 
+size_t distributed_query_start_position(size_t series_length, unsigned int proc_rank, unsigned int num_procs) {
+    size_t search_space_length = floor((float)proc_rank / num_procs * series_length * (series_length + 1.0) / 2.0);
+    size_t position = series_length - ceil(-1.0 / 2.0 * sqrt(8.0 * search_space_length + 1.0) + series_length + 1.0 / 2.0);
+    return position;
+}
+
 unsigned int query_start_pos() {
     if (use_mpi) {
         mpi::communicator world;
-        return world.rank();
+        return distributed_query_start_position(TIME_SERIES_LEN, world.rank(), world.size());
     } else {
         return 0;
     }
 }
 
-unsigned int search_increment() {
+unsigned int query_end_pos() {
     if (use_mpi) {
         mpi::communicator world;
-        return world.size();
+        return distributed_query_start_position(TIME_SERIES_LEN, world.rank() + 1, world.size());
     } else {
-        return 1;
+        return TIME_SERIES_LEN - QUERY_LEN;
     }
 }
 
@@ -67,17 +72,6 @@ std::ostream& msgl(std::string str) {
     #include "profiler.h"
 #endif
 
-static Cache* cache;
-
-//todo: test that this function is even necessary
-void sighandler(int sig)
-{
-    //dont leave shared memory regions lying around (I don't know
-    //what would happen, but it doesn't sound like a good idea)
-    delete cache;
-    exit(1);
-}
-
 
 /// Main Function
 int main(int argc, char *argv[])
@@ -88,7 +82,7 @@ int main(int argc, char *argv[])
     unsigned int K = 100;
 
     size_t start_pos = query_start_pos();
-    size_t increment = search_increment();
+    size_t end_pos = query_end_pos();
 #ifdef USE_PROFILER
     ProfilerStart("/tmp/profile");
 #endif
@@ -102,28 +96,13 @@ int main(int argc, char *argv[])
         time_series[i] = point;
     in.close();
 
-    signal(SIGABRT, &sighandler);
-	signal(SIGTERM, &sighandler);
-	signal(SIGINT, &sighandler);
-
-    cache = new cache_type(time_series);
-    MotifFinder engine(time_series, *cache);
-
+    MotifFinder engine(time_series);
     std::ofstream out(std::string("/scratch/lfs/pvnick/motif_results/") + get_output_filename(),
                       std::ofstream::out | std::ofstream::trunc);
-    for (size_t i = start_pos
-         ; i < TIME_SERIES_LEN - QUERY_LEN /*don't query at the end of the time series*/ //todo: should this be 2 x QUERY_LEN?
-         ; i += increment)
-    {
-        msg("Querying from ") << i << std::endl;
-        MotifFinder::TopKMatches results = engine.single_pass(K, i);
-        results >> out;
-        msgl("Query complete");
-    }
+    engine.run(start_pos, end_pos, K);
     delete[] time_series;
 
     out.close();
-    delete cache;
 #ifdef USE_PROFILER
     ProfilerStop();
 #endif
