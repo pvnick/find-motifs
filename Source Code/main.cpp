@@ -96,13 +96,10 @@ int main(int argc, char *argv[])
         time_series[i] = point;
     in.close();
 
-    MotifFinder engine(time_series);
-    std::ofstream out(std::string("/scratch/lfs/pvnick/motif_results/") + get_output_filename(),
-                      std::ofstream::out | std::ofstream::trunc);
+    MotifFinder engine(time_series, std::string("/scratch/lfs/pvnick/motif_results/") + get_output_filename());
     engine.run(start_pos, end_pos, K);
     delete[] time_series;
 
-    out.close();
 #ifdef USE_PROFILER
     ProfilerStop();
 #endif
