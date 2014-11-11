@@ -48,10 +48,10 @@ public:
 class Cache {
 private:
     CacheEntry** entries;
-    const double* time_series;
+    vector<double>& time_series;
 public:
     Cache() = delete;
-    Cache(double* ts): time_series(ts) {
+    Cache(vector<double>& ts): time_series(ts) {
         std::cerr << "Cache: Allocating " << TIME_SERIES_LEN * sizeof(CacheEntry) << " bytes of memory for cache entries" << std::endl;
         entries = new CacheEntry*[TIME_SERIES_LEN];
         for (int i = 0; i != TIME_SERIES_LEN; ++i)

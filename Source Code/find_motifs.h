@@ -6,35 +6,41 @@
 #include "ucr_dtw.h"
 #include <limits>
 
+/*note to self:
+call signatures should generally be one of the following:
+bar(foo f); // want to obtain a copy of f
+bar(const foo& f); // want to read f
+bar(foo* f); // want to modify f
+*/
+
 class TopCandidates;
 
 struct Candidate {
-friend class TopCandidates;
 public:
-    typedef double DIST_TYPE;
+    typedef double dist_type;
 private:
-    static constexpr double max_dist = std::numeric_limits<DIST_TYPE>::max();
-    size_t winner_tree_external_index;
+    static constexpr double max_dist = std::numeric_limits<dist_type>::max();
 public:
-    DIST_TYPE dist;
+    dist_type dist;
     size_t loc;
     size_t query_loc;
+    size_t winner_tree_external_index; //holding this allows faster updating of the top-k tree
     //if the candidate held in this node is, at a subsequent query position, determined to be a trivial match,
-    //is_eliminated will get set to true, and this candidate will be skipped when candidates are outputted
-    bool is_eliminated;
+    //is_disabled will get set to true, and this candidate will be skipped when candidates are outputted
+    bool is_disabled;
     Candidate() {
         reset();
     };
-    void eliminate() {
+    void disable() {
         reset();
-        is_eliminated = true;
+        is_disabled = true;
     }
     bool is_valid() const {
         //since candidates must be at least QUERY_LEN points past the start of the time series, their location can't be zero
         return loc != 0;
     }
     void reset() {
-        is_eliminated = false;
+        is_disabled = false;
         dist = max_dist;
         loc = 0;
         query_loc = 0;
@@ -55,7 +61,7 @@ private:
         }
     };
     //note: packed array is 1-based to make the math easier
-    Node* tree;
+    std::vector<Node> tree;
     size_t num_nodes;
     size_t prepare_subtree(size_t index) {
         //since all slots represent candidates which are initially the same distance, we just need to
@@ -83,8 +89,8 @@ private:
     }
     Node get_winning_child(size_t index) const {
         //xxx this does *not* do bounds checking. if index points to an external node this will display undefined behavior
-        Node left_child = tree[2 * index];
-        Node right_child = tree[2 * index + 1];
+        Node& left_child = tree[2 * index];
+        Node& right_child = tree[2 * index + 1];
         if (right_child.is_placeholder == false && right_child.candidate.dist > left_child.candidate.dist)
             return right_child;
         else
@@ -98,7 +104,7 @@ private:
             tree[i] = winner;
         }
     }
-    size_t count_internal_nodes() {
+    size_t count_internal_nodes() const {
         return (num_nodes - 1) / 2;
     }
 public:
@@ -106,36 +112,31 @@ public:
     //we don't care about order when iterating through the top-k matches, so just traverse the winner tree external nodes
     friend class TopCandidates;
     private:
+        std::vector<int>::iterator tree_iter;
         typedef TopCandidates_Iter self_type;
-        value_type* tree;
-        size_t curr_index;
-        //end_index is typically set to one past the last occupiable tree node (ie the first placeholder 
-        //external node in a non-full tree)
-        size_t end_index;
         //no reason to expose the normal constructor to the client of TopCandidates
-        explicit TopCandidates_Iter(value_type* tree_array, size_t tree_array_index, size_t max_index): 
-            tree(tree_array), 
-            curr_index(tree_array_index),
-            end_index(max_index) {}
+        //todo: ensure we can modify the candidates being returned
+        explicit TopCandidates_Iter(std::vector<value_type>* tree, size_t start_index): 
+            tree_iter(tree->begin() + start_index) {}
     public:
-        TopCandidates_Iter(const self_type& src): tree(src.tree), curr_index(src.curr_index) {}
+        TopCandidates_Iter(self_type const& src): tree_iter(src.tree_iter) {}
         reference operator*() const {
-            return tree[curr_index].candidate;
+            return tree_iter->candidate;
         }
         pointer operator->() const {
             return &operator*();
         }
-        self_type& operator=(const self_type& src) = delete;
+        self_type& operator=(self_type const& src) = delete;
         self_type& operator++() {
             //preincrement
-            ++curr_index;
+            ++tree_iter;
             return *this;
         }
         self_type operator++(int) = delete;
-        bool operator==(const TopCandidates_Iter& rhs) const {
-            return curr_index == rhs.curr_index;
+        bool operator==(TopCandidates_Iter const& rhs) const {
+            return tree_iter == rhs.tree_iter;
         }
-        bool operator!=(const TopCandidates_Iter& rhs) const {
+        bool operator!=(TopCandidates_Iter const& rhs) const {
             return ! operator==(rhs);
         }
     };
@@ -143,15 +144,14 @@ public:
     iterator begin() {
         size_t num_internal_nodes = count_internal_nodes();
         size_t first_external_index = num_internal_nodes + 1;
-        size_t first_external_placeholder = first_external_index + K;
-        iterator iter(tree, first_external_index, first_external_placeholder);
+        iterator iter(tree, first_external_index);
         return iter;
     }
     iterator end() {
         size_t num_internal_nodes = count_internal_nodes();
         size_t first_external_index = num_internal_nodes + 1;
         size_t first_external_placeholder = first_external_index + K;
-        iterator iter(tree, first_external_placeholder, first_external_placeholder);
+        iterator iter(tree, first_external_placeholder);
         return iter;
     }
     TopCandidates(unsigned int K) {
@@ -159,7 +159,7 @@ public:
         size_t num_external_nodes = pow(2, ceil(lg(K)));
         size_t num_internal_nodes = num_external_nodes - 1;
         num_nodes = num_external_nodes + num_internal_nodes;
-        tree = new Node[num_nodes];
+        tree.resize(num_nodes + 1);
         tree[0].is_placeholder = true;
         //since we can only store K candidates in the tree, disable external nodes more than K slots from the left.
         //doing so automagically guarantees we store at most K items in the tree
@@ -167,37 +167,33 @@ public:
             tree[i].is_placeholder = true;
         prepare_subtree(1);
     }
-    ~TopCandidates() {
-        delete[] tree;
-    }
     Candidate weakest_candidate() const {
         return tree[1].candidate;
     }
     size_t weakest_candidate_external_index() const {
-        Candidate m = weakest_candidate();
+        Candidate& m = weakest_candidate();
         return m.winner_tree_external_index;
     }
-    void replace_candidate(Candidate old_candidate, Candidate new_candidate) {
+    void replace_candidate(Candidate const& old_candidate, Candidate const& new_candidate) {
         size_t external_index = old_candidate.winner_tree_external_index;
-        new_candidate.winner_tree_external_index = external_index;
         tree[external_index].candidate = new_candidate;
+        tree[external_index].candidate.winner_tree_external_index = external_index;
         replay_up(external_index);
     }
-    void replace_weakest_candidate(Candidate new_candidate) {
+    void replace_weakest_candidate(Candidate const& new_candidate) {
         replace_candidate(weakest_candidate(), new_candidate);
     }
-    void eliminate_candidate(Candidate to_eliminate, bool restore_tree_structure = true) {
-        size_t external_index = to_eliminate.winner_tree_external_index;
-        if (tree[external_index].candidate != to_eliminate)
-            throw std::logic_error("eliminate_candidate: candidate does not belong to this tree");
-        tree[external_index].candidate.eliminate();
-        //if this tree does not correspond to the active query, theres no reason to maintain tree structure
-        //(no more potential incomming candidates, we're just waiting to output the non-eliminated ones)
-        if (restore_tree_structure)
-            replay_up(external_index);
+    void disable_candidate_external_node(Candidate& to_disable) {
+        //if this tree does not correspond to the active query - only time this function will be called - theres 
+        //no reason to maintain tree structure (no more potential incomming candidates, we're just waiting to 
+        //output the non-disabled ones) so this function should not be called if this class instance
+        //belongs to the current query; replace_candidate should be used instead
+        size_t external_index = to_disable.winner_tree_external_index;
+        assert(tree[external_index].candidate == to_disable);
+        tree[external_index].candidate.disable();
     }
     void reset() {
-        //this function allows us to reuse this class instance for a new query
+        //this function allows us to reuse this class instance for a new query.
         //reset the left K external nodes
         iterator iter_end = end();
         for (iterator iter = begin(); iter != iter_end; ++iter)
@@ -207,8 +203,9 @@ public:
     }
 };
 
-//the following class allows us to detect and mitigate trivial matches in constant time.
-//there should only be a single instance, since trivial matches are only relevant within the past QUERY_LEN queries.
+//the following class uses a hash table (hashing function is position/QUERY_LEN) and allows us to detect and mitigate
+//trivial matches in constant time. there should only be a single instance, since trivial matches are only relevant 
+//within the past QUERY_LEN queries.
 class QueryLookup {
 private:
     struct CandidateBucket {
@@ -227,78 +224,71 @@ private:
             candidate = c;
         }
     };
-    CandidateBucket* buckets;
+    std::vector<CandidateBucket> buckets;
     size_t num_buckets;
     size_t get_bucket_index(size_t candidate_position) const {
         return candidate_position / QUERY_LEN;
     }
-    bool detect_trivial_match_bucket(const Candidate in_new, CandidateBucket& out_old) const {
+    CandidateBucket* get_trivial_match_bucket(Candidate const& new_candidate) const {
         //todo: verify this logic - would there ever be two candidates in the vacinity?
-        size_t new_candidate_position = in_new.loc;
+        size_t new_candidate_position = new_candidate.loc;
         size_t bucket_index = get_bucket_index(new_candidate_position);
         if (bucket_index > 0 && buckets[bucket_index - 1].detect_trivial_match(new_candidate_position)) {
-            out_old = buckets[bucket_index - 1];
-            return true;
+            return buckets + bucket_index - 1;
         }
         if (buckets[bucket_index].detect_trivial_match(new_candidate_position)) {
-            out_old = buckets[bucket_index];
-            return true;
+            return buckets + bucket_index;
         }
         if (bucket_index + 1 < num_buckets && buckets[bucket_index + 1].detect_trivial_match(new_candidate_position)) {
-            out_old = buckets[bucket_index + 1];
-            return true;
+            return buckets + bucket_index + 1;
         }
-        return false;
+        return nullptr;
     }
 public:
     QueryLookup() {
-        num_buckets = ceil((float)TIME_SERIES_LEN / QUERY_LEN);
-        buckets = new CandidateBucket[num_buckets];
+        num_buckets = ceil(static_cast<float>(TIME_SERIES_LEN) / QUERY_LEN);
+        buckets.resize(num_buckets);
     }
-    ~QueryLookup() {
-        delete[] buckets;
-    }
-    bool detect_trivial_match(const Candidate in_new, Candidate& out_old) const {
-        CandidateBucket bucket;
-        if (detect_trivial_match_bucket(in_new, bucket)) {
-            out_old = bucket.candidate;
+    bool detect_trivial_match(const Candidate& new_candidate, Candidate* old_candidate) const {
+        CandidateBucket* bucket = get_trivial_match_bucket(new_candidate);
+        if (bucket) {
+            *old_candidate = bucket->candidate;
             return true;
         }
         return false;
     }
-    //remove deletes all candidates in the vacinity of old_candidate
-    void pop_candidate(const Candidate old_candidate) {
+    void pop_candidate(Candidate const& old_candidate) {
         size_t bucket_index = get_bucket_index(old_candidate.loc);
         buckets[bucket_index].pop_candidate();
     }
-    void push_candidate(const Candidate new_candidate) {
+    void push_candidate(Candidate const& new_candidate) {
         //note: this indiscriminately replaces a previous candidate with the new candidate, regardless
         //of which one is a better match (that responsibility is left to the client)
-        CandidateBucket old_candidate_bucket;
-        if (detect_trivial_match_bucket(new_candidate, old_candidate_bucket))
-            old_candidate_bucket.pop_candidate();
-        size_t bucket_index = get_bucket_index(new_candidate);
+        CandidateBucket* old_candidate_bucket = get_trivial_match_bucket(new_candidate);
+        if (old_candidate_bucket)
+            old_candidate_bucket->pop_candidate();
+        size_t bucket_index = get_bucket_index(new_candidate.loc);
         buckets[bucket_index].push_candidate(new_candidate);
     }
 };
 
 class MotifFinder {
 private:
-    const double* time_series;
-    Cache cache;
-    //top_k_query_candidates is a circular buffer that holds the best candidates for the last QUERY_LEN queries.
-    //it is used to detect and ignore trivial matches.
-    TopCandidates* top_k_query_candidates;
+    std::vector<double> time_series;
     QueryLookup query_lookup;
     std::ofstream results_output;
     const char field_separator;
+    //top_k_query_candidates is a circular buffer that holds the best candidates for the last QUERY_LEN queries.
+    //it is used to detect and ignore trivial matches.
+    std::vector<TopCandidates> top_k_query_candidates;
+    Cache cache;
     size_t curr_query_loc;
     TopCandidates& get_top_k(size_t query_loc) {
         size_t circ_buff_index = query_loc % QUERY_LEN;
-        TopCandidates& top_k = query_candidates[circ_buff_index];
+        TopCandidates& top_k = top_k_query_candidates[circ_buff_index];
         return top_k;
     }
-    void print_and_disregard_top_k(size_t query_loc) {
+    void output_and_disregard_top_k(size_t query_loc) {
         TopCandidates& top_k = get_top_k(query_loc);
         TopCandidates::iterator iter_end = top_k.end();
         for (auto iter = top_k.begin(); iter != iter_end; ++iter) {
@@ -310,34 +300,39 @@ private:
         top_k.reset();
     }
 public:
-    MotifFinder(const double* ts, std::string output_filepath, const char results_field_separator = '\t'):
-        time_series(ts),
-        cache(time_series),
+    MotifFinder(std::string const& series_filepath, size_t series_len, unsigned int K, std::string const& output_filepath, const char results_field_separator):
+        time_series(series_len),
         results_output(output_filepath, std::ofstream::out | std::ofstream::trunc),
-        field_separator(results_field_separator)
+        field_separator(results_field_separator),
+        top_k_query_candidates(QUERY_LEN, TopCandidates(K)),
+        cache(time_series),
+        curr_query_loc(0)
     {
-        query_candidates = new TopCandidates[QUERY_LEN];
+        std::cerr << "Reading time series data file" << std::endl;
+        std::ifstream in(series_filepath);
+        double point;
+        while (in >> point)
+            time_series.push_back(point);
+        in.close();
     }
-    ~MotifFinder() {
-        delete[] query_candidates;
-    }
-    Candidate::DIST_TYPE weakest_distance() {
-        TopCandidates top_k = get_top_k(curr_query_loc);
-        Candidate weakest_candidate = top_k.weakest_candidate;
+    Candidate::dist_type weakest_distance() {
+        TopCandidates& top_k = get_top_k(curr_query_loc);
+        Candidate& weakest_candidate = top_k.weakest_candidate;
         return weakest_candidate.dist;
     }
-    void register_candidate(size_t new_candidate_index, Candidate::DIST_TYPE distance) {
-        //note: this function does not check to see that the new candidate is actually better and worth remembering
+    void try_register_candidate(size_t new_candidate_index, Candidate::dist_type distance) {
+        //note: this function does not check to see that the new candidate is actually better and worth remembering.
+        //that responsibility is left to the client, who should be checking that with weakest_distance
+        TopCandidates& curr_top_k = get_top_k(curr_query_loc);
         Candidate new_candidate;
         new_candidate.dist = distance;
         new_candidate.query_loc = curr_query_loc;
         new_candidate.loc = new_candidate_index;
         Candidate old_candidate;
-        TopCandidates& curr_top_k = get_top_k(curr_query_loc);
-        if (query_lookup.detect_trivial_match(new_candidate, old_candidate)) {
+        if (query_lookup.detect_trivial_match(&old_candidate)) {
             //found a trivial match
             if (new_candidate.dist < old_candidate.dist) {
-                //old candidate is trivial match 
+                //old candidate is trivial match (new is better), so disregard old and register the new one
                 query_lookup.push_candidate(new_candidate);
                 if (old_candidate.query_loc == new_candidate.query_loc) {
                     //trivial match to candidate of current query
@@ -345,13 +340,41 @@ public:
                 } else {
                     //trivial match to candidate of previous query
                     TopCandidates& prev_top_k = get_top_k(old_candidate.query_loc);
-                    prev_top_k.eliminate_candidate(old_candidate, false);
+                    prev_top_k.disable_candidate(old_candidate);
                 }
             }
         } else {
-            //no trivial match, just replace weakest match on current query
+            //no trivial match
+            query_lookup.push_candidate(new_candidate);
             curr_top_k.replace_weakest_candidate(new_candidate);
         }
+    }
+    void run(size_t start_pos, size_t end_pos) {
+        using namespace std::placeholders;
+        UCR_DTW subsequence_search(time_series, cache);
+        auto weakest_dist_callback = std::bind(&weakest_distance, this);
+        auto register_candidate_callback = std::bind(&try_register_candidate, this, _1, _2);
+        for (size_t i = start_pos; i != end_pos; ++i) {
+            curr_query_loc = i;
+            subsequence_search.single_pass(i, weakest_dist_callback, register_candidate_callback);
+            if (i - start_pos >= QUERY_LEN) {
+                //no more trivial to oldest query stored in the circular buffer
+                output_and_disregard_top_k(i - QUERY_LEN)
+            }
+        }
+/* 
+ 32 void do_call(std::function<void(std::string, std::string)> f) {
+ 33     f("hello globe", "goodbye");
+ 34 }
+ 35
+ 36 void callfunc() {
+ 37     using namespace std::placeholders;  // for _1, _2, _3...
+ 38     foo f;
+ 39     auto f3 = std::bind(&foo::testfunc, &f, _1, _2);
+ 40     do_call(f3);
+ 41 }
+ 42
+*/
     }
 };
 

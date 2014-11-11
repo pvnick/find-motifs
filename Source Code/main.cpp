@@ -20,8 +20,8 @@
 #endif
 
 size_t distributed_query_start_position(size_t series_length, unsigned int proc_rank, unsigned int num_procs) {
-    size_t search_space_length = floor((float)proc_rank / num_procs * series_length * (series_length + 1.0) / 2.0);
-    size_t position = series_length - ceil(-1.0 / 2.0 * sqrt(8.0 * search_space_length + 1.0) + series_length + 1.0 / 2.0);
+    size_t search_space_length = floor((float)(num_procs - proc_rank) / num_procs * series_length * (series_length + 1.0) / 2.0);
+    size_t position = ceil(-1.0 / 2.0 * sqrt(8.0 * search_space_length + 1.0) + series_length + 1.0 / 2.0);
     return position;
 }
 
@@ -87,18 +87,9 @@ int main(int argc, char *argv[])
     ProfilerStart("/tmp/profile");
 #endif
 
-    std::cerr << "Reading time series data file" << std::endl;
-    double* time_series;
-    std::ifstream in(SERIES_FILEPATH);
-    time_series = new double[TIME_SERIES_LEN];
-    double point;
-    for (int i = 0; in >> point && i != TIME_SERIES_LEN; ++i)
-        time_series[i] = point;
-    in.close();
-
-    MotifFinder engine(time_series, std::string("/scratch/lfs/pvnick/motif_results/") + get_output_filename());
+    std::string results_file_path = std::string("/scratch/lfs/pvnick/motif_results/") + get_output_filename();
+    MotifFinder engine(SERIES_FILEPATH, TIME_SERIES_LEN, results_file_path);
     engine.run(start_pos, end_pos, K);
-    delete[] time_series;
 
 #ifdef USE_PROFILER
     ProfilerStop();
