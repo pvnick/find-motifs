@@ -16,8 +16,6 @@ bar(foo* f); // want to modify f
 class TopCandidates;
 
 struct Candidate {
-public:
-    typedef double dist_type;
 private:
     static constexpr double max_dist = std::numeric_limits<dist_type>::max();
 public:
@@ -45,6 +43,9 @@ public:
         loc = 0;
         query_loc = 0;
     }
+    bool operator==(const Candidate& rhs) {
+        return query_loc == rhs.query_loc && loc == rhs.loc;
+    }
 };
 
 //the following class uses a max winner tree to hold the top-K items, with weaker matches having a higher priority
@@ -59,17 +60,21 @@ private:
         void reset() {
             candidate.reset();
         }
+        bool operator==(const Node& rhs) {
+            return is_placeholder == rhs.is_placeholder || candidate == rhs.candidate;
+        }
     };
     //note: packed array is 1-based to make the math easier
     std::vector<Node> tree;
     size_t num_nodes;
+    size_t K;
     size_t prepare_subtree(size_t index) {
         //since all slots represent candidates which are initially the same distance, we just need to
         //bubble up stored external indices (shaves lg(N) comparisons off replacing the weakest candidate
         //and O(N) off of eliminating an arbitrary candidate) and whether the node is a placeholder. this
-        //function is recursive and returns an index to an external node slot. we traverse down the left child, so 
-        //this function returns the index to the external node arrived at if we were to follow the left leg 
-        //from the current position to the bottom of the tree. consequentially, adding items preserves tree 
+        //function is recursive and returns an index to an external node slot. we traverse down the left child, so
+        //this function returns the index to the external node arrived at if we were to follow the left leg
+        //from the current position to the bottom of the tree. consequentially, adding items preserves tree
         //completeness, and we don't need manually ensure that we're storing no more than K items
         size_t external_index;
         size_t left_child_index = index * 2;
@@ -84,13 +89,13 @@ private:
             external_index = index;
         }
         //the following has the effect of bubbling placeholder designations up to where the left sibling is a non-placeholder
-        tree[index] = tree[external_index]; 
+        tree[index] = tree[external_index];
         return external_index;
     }
     Node get_winning_child(size_t index) const {
         //xxx this does *not* do bounds checking. if index points to an external node this will display undefined behavior
-        Node& left_child = tree[2 * index];
-        Node& right_child = tree[2 * index + 1];
+        const Node& left_child = tree[2 * index];
+        const Node& right_child = tree[2 * index + 1];
         if (right_child.is_placeholder == false && right_child.candidate.dist > left_child.candidate.dist)
             return right_child;
         else
@@ -110,16 +115,12 @@ private:
 public:
     class TopCandidates_Iter: public std::iterator<std::forward_iterator_tag, Candidate> {
     //we don't care about order when iterating through the top-k matches, so just traverse the winner tree external nodes
-    friend class TopCandidates;
     private:
-        std::vector<int>::iterator tree_iter;
+        std::vector<Node>::iterator tree_iter;
         typedef TopCandidates_Iter self_type;
-        //no reason to expose the normal constructor to the client of TopCandidates
-        //todo: ensure we can modify the candidates being returned
-        explicit TopCandidates_Iter(std::vector<value_type>* tree, size_t start_index): 
-            tree_iter(tree->begin() + start_index) {}
     public:
         TopCandidates_Iter(self_type const& src): tree_iter(src.tree_iter) {}
+        explicit TopCandidates_Iter(std::vector<Node>* tree, size_t start_index): tree_iter(tree->begin() + start_index) {}
         reference operator*() const {
             return tree_iter->candidate;
         }
@@ -144,17 +145,17 @@ public:
     iterator begin() {
         size_t num_internal_nodes = count_internal_nodes();
         size_t first_external_index = num_internal_nodes + 1;
-        iterator iter(tree, first_external_index);
+        iterator iter(&tree, first_external_index);
         return iter;
     }
     iterator end() {
         size_t num_internal_nodes = count_internal_nodes();
         size_t first_external_index = num_internal_nodes + 1;
         size_t first_external_placeholder = first_external_index + K;
-        iterator iter(tree, first_external_placeholder);
+        iterator iter(&tree, first_external_placeholder);
         return iter;
     }
-    TopCandidates(unsigned int K) {
+    TopCandidates(size_t max_entries): K(max_entries) {
         //we need 2^n external nodes for easy math, where n is an integer
         size_t num_external_nodes = pow(2, ceil(lg(K)));
         size_t num_internal_nodes = num_external_nodes - 1;
@@ -163,7 +164,7 @@ public:
         tree[0].is_placeholder = true;
         //since we can only store K candidates in the tree, disable external nodes more than K slots from the left.
         //doing so automagically guarantees we store at most K items in the tree
-        for (int i = num_nodes; i > num_internal_nodes + K; --i)
+        for (unsigned int i = num_nodes; i > num_internal_nodes + K; --i)
             tree[i].is_placeholder = true;
         prepare_subtree(1);
     }
@@ -171,7 +172,7 @@ public:
         return tree[1].candidate;
     }
     size_t weakest_candidate_external_index() const {
-        Candidate& m = weakest_candidate();
+        const Candidate& m = weakest_candidate();
         return m.winner_tree_external_index;
     }
     void replace_candidate(Candidate const& old_candidate, Candidate const& new_candidate) {
@@ -184,8 +185,8 @@ public:
         replace_candidate(weakest_candidate(), new_candidate);
     }
     void disable_candidate_external_node(Candidate& to_disable) {
-        //if this tree does not correspond to the active query - only time this function will be called - theres 
-        //no reason to maintain tree structure (no more potential incomming candidates, we're just waiting to 
+        //if this tree does not correspond to the active query - only time this function will be called - theres
+        //no reason to maintain tree structure (no more potential incomming candidates, we're just waiting to
         //output the non-disabled ones) so this function should not be called if this class instance
         //belongs to the current query; replace_candidate should be used instead
         size_t external_index = to_disable.winner_tree_external_index;
@@ -204,7 +205,7 @@ public:
 };
 
 //the following class uses a hash table (hashing function is position/QUERY_LEN) and allows us to detect and mitigate
-//trivial matches in constant time. there should only be a single instance, since trivial matches are only relevant 
+//trivial matches in constant time. there should only be a single instance, since trivial matches are only relevant
 //within the past QUERY_LEN queries.
 class QueryLookup {
 private:
@@ -229,18 +230,18 @@ private:
     size_t get_bucket_index(size_t candidate_position) const {
         return candidate_position / QUERY_LEN;
     }
-    CandidateBucket* get_trivial_match_bucket(Candidate const& new_candidate) const {
+    CandidateBucket* get_trivial_match_bucket(Candidate const& new_candidate) {
         //todo: verify this logic - would there ever be two candidates in the vacinity?
         size_t new_candidate_position = new_candidate.loc;
         size_t bucket_index = get_bucket_index(new_candidate_position);
         if (bucket_index > 0 && buckets[bucket_index - 1].detect_trivial_match(new_candidate_position)) {
-            return buckets + bucket_index - 1;
+            return &buckets[bucket_index - 1];
         }
         if (buckets[bucket_index].detect_trivial_match(new_candidate_position)) {
-            return buckets + bucket_index;
+            return &buckets[bucket_index];
         }
         if (bucket_index + 1 < num_buckets && buckets[bucket_index + 1].detect_trivial_match(new_candidate_position)) {
-            return buckets + bucket_index + 1;
+            return &buckets[bucket_index + 1];
         }
         return nullptr;
     }
@@ -249,7 +250,7 @@ public:
         num_buckets = ceil(static_cast<float>(TIME_SERIES_LEN) / QUERY_LEN);
         buckets.resize(num_buckets);
     }
-    bool detect_trivial_match(const Candidate& new_candidate, Candidate* old_candidate) const {
+    bool detect_trivial_match(const Candidate& new_candidate, Candidate* old_candidate) {
         CandidateBucket* bucket = get_trivial_match_bucket(new_candidate);
         if (bucket) {
             *old_candidate = bucket->candidate;
@@ -315,12 +316,12 @@ public:
             time_series.push_back(point);
         in.close();
     }
-    Candidate::dist_type weakest_distance() {
+    dist_type weakest_distance() {
         TopCandidates& top_k = get_top_k(curr_query_loc);
-        Candidate& weakest_candidate = top_k.weakest_candidate;
+        const Candidate& weakest_candidate = top_k.weakest_candidate();
         return weakest_candidate.dist;
     }
-    void try_register_candidate(size_t new_candidate_index, Candidate::dist_type distance) {
+    void try_register_candidate(size_t new_candidate_index, dist_type distance) {
         //note: this function does not check to see that the new candidate is actually better and worth remembering.
         //that responsibility is left to the client, who should be checking that with weakest_distance
         TopCandidates& curr_top_k = get_top_k(curr_query_loc);
@@ -329,7 +330,7 @@ public:
         new_candidate.query_loc = curr_query_loc;
         new_candidate.loc = new_candidate_index;
         Candidate old_candidate;
-        if (query_lookup.detect_trivial_match(&old_candidate)) {
+        if (query_lookup.detect_trivial_match(new_candidate, &old_candidate)) {
             //found a trivial match
             if (new_candidate.dist < old_candidate.dist) {
                 //old candidate is trivial match (new is better), so disregard old and register the new one
@@ -340,7 +341,7 @@ public:
                 } else {
                     //trivial match to candidate of previous query
                     TopCandidates& prev_top_k = get_top_k(old_candidate.query_loc);
-                    prev_top_k.disable_candidate(old_candidate);
+                    prev_top_k.disable_candidate_external_node(old_candidate);
                 }
             }
         } else {
@@ -349,20 +350,20 @@ public:
             curr_top_k.replace_weakest_candidate(new_candidate);
         }
     }
-    void run(size_t start_pos, size_t end_pos) {
+    void run(size_t start_pos, size_t end_pos, size_t candidate_increment) {
         using namespace std::placeholders;
-        UCR_DTW subsequence_search(time_series, cache);
-        auto weakest_dist_callback = std::bind(&weakest_distance, this);
-        auto register_candidate_callback = std::bind(&try_register_candidate, this, _1, _2);
+        UCR_DTW subsequence_search(&cache);
+        auto weakest_dist_callback = std::bind(&MotifFinder::weakest_distance, this);
+        auto register_candidate_callback = std::bind(&MotifFinder::try_register_candidate, this, _1, _2);
         for (size_t i = start_pos; i != end_pos; ++i) {
             curr_query_loc = i;
-            subsequence_search.single_pass(i, weakest_dist_callback, register_candidate_callback);
+            subsequence_search.single_pass(i, candidate_increment, weakest_dist_callback, register_candidate_callback);
             if (i - start_pos >= QUERY_LEN) {
                 //no more trivial to oldest query stored in the circular buffer
-                output_and_disregard_top_k(i - QUERY_LEN)
+                output_and_disregard_top_k(i - QUERY_LEN);
             }
         }
-/* 
+/*
  32 void do_call(std::function<void(std::string, std::string)> f) {
  33     f("hello globe", "goodbye");
  34 }

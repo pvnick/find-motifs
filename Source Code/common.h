@@ -27,6 +27,8 @@
 namespace mpi = boost::mpi;
 namespace interprocess = boost::interprocess;
 
+typedef double dist_type;
+
 extern bool use_mpi;
 extern unsigned int query_start_pos();
 extern unsigned int search_increment();

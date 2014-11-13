@@ -34,6 +34,8 @@
 
 class UCR_DTW {
 private:
+    Cache& cache;
+
     /// Data structure for sorting the query
     typedef struct Index
         {   double value;
@@ -128,11 +130,10 @@ private:
     /// Note that the envelops have been created (in main function) when each data point has been read.
     ///
     /// Variable Explanation,
-    /// tz: Z-normalized data
     /// qo: sorted query
     /// cb: (output) current bound at each position. Used later for early abandoning in DTW.
     /// l,u: lower and upper envelop of the current data
-    double lb_keogh_data_cumulative(int* order, const double *tz, double *qo, double *cb, const double *l, const double *u, int len, double mean, double stddev, double best_so_far = INF)
+    double lb_keogh_data_cumulative(int* order, double *qo, double *cb, const double *l, const double *u, int len, double mean, double stddev, double best_so_far = INF)
     {
         double lb = 0;
         double uu,ll,d;
@@ -158,7 +159,7 @@ private:
     /// A,B: data and query, respectively
     /// cb : cummulative bound used for early abandoning
     /// r  : size of Sakoe-Chiba warpping band
-    double dtw(const double* A, const double* B, double *cb, int m, double bsf = INF)
+    double dtw(const std::vector<double>& A, const std::vector<double>& B, double *cb, int m, double bsf = INF)
     {
         const int r = WARPING_r;
         double buffer1[2 * r + 1];
@@ -206,6 +207,7 @@ private:
             }
 
             /// We can abandon early if the current cummulative distace with lower bound together are larger than bsf
+            //todo: consider removing DTW early abandoning
             if (i+r < m-1 && min_cost + cb[i+r+1] >= bsf)
                 return min_cost + cb[i+r+1];
 
@@ -246,21 +248,18 @@ private:
         exit(1);
     }
 public:
+    UCR_DTW(Cache* cache_ptr): cache(*cache_ptr) {}
 
-    /// Main Function
-
-    //argv[1] = timeseries file
-    //argv[2] = query file
-    //argv[3] = query length
-    TopKMatches single_pass(unsigned int K, const size_t query_position)
+    void single_pass(size_t query_position,
+                     size_t candidate_increment,
+                     std::function<dist_type()> weakest_distance_callback,
+                     std::function<void(size_t, dist_type)> register_candidate_callback)
     {
         const CacheEntry& cached_query_data = cache[query_position];
-        const double *q = cached_query_data.series_normalized;
         const unsigned int m = QUERY_LEN;
-        TopKMatches matches(100, m, query_position);
         if (cached_query_data.range < MIN_RANGE) {
             msgl("Range is too small, skipping");
-            return matches;
+            return;
         }
 
         double bsf;          /// best-so-far
@@ -276,18 +275,15 @@ public:
         Index Q_tmp[m];
 
 
-        const double* tz;
 
         long long i;
         double mean, stddev;
         int kim = 0,keogh = 0, keogh2 = 0;
         double dist=0, lb_kim=0, lb_k=0, lb_k2=0;
 
-        /// Read query file
         bsf = INF;
-        //bsf = 10;
         i = 0;
-        q = cached_query_data.series_normalized;
+        const std::vector<double>& q = cached_query_data.series_normalized;
 
         /// Create envelop of the query: lower envelop, l, and upper envelop, u
         const double* l = cached_query_data.lemire_envelope.lower;
@@ -300,7 +296,7 @@ public:
             Q_tmp[i].value = q[i];
             Q_tmp[i].index = i;
         }
-        qsort(Q_tmp, m, sizeof(Index), &MotifFinder::comp);
+        qsort(Q_tmp, m, sizeof(Index), &comp);
 
         /// also create another arrays for keeping sorted envelop
         for( i=0; i<m; i++)
@@ -321,7 +317,7 @@ public:
         int k=0;
 
         std::cerr << "starting: " << query_position << std::endl;
-        for (size_t candidate_position = query_position + m; candidate_position < TIME_SERIES_LEN - m; ++candidate_position) {
+        for (size_t candidate_position = query_position + m; candidate_position < TIME_SERIES_LEN - m; candidate_position += candidate_increment) {
             const CacheEntry& cached_candidate_data = cache[candidate_position];
             if (cached_candidate_data.range < MIN_RANGE) {
                 continue;
@@ -342,12 +338,12 @@ public:
                 lb_k = lb_keogh_cumulative(cached_candidate_data, order, uo, lo, cb1, m, bsf);
                 if (lb_k < bsf)
                 {
-                    tz = cached_candidate_data.series_normalized;
+                    const std::vector<double>& tz = cached_candidate_data.series_normalized;
 
                     /// Use another lb_keogh to prune
                     /// qo is the sorted query. tz is unsorted z_normalized data.
                     /// l_buff, u_buff are big envelop for all data in this chunk
-                    lb_k2 = lb_keogh_data_cumulative(order, tz, qo, cb2, l_buff, u_buff, m, mean, stddev, bsf);
+                    lb_k2 = lb_keogh_data_cumulative(order, qo, cb2, l_buff, u_buff, m, mean, stddev, bsf);
                     if (lb_k2 < bsf)
                     {
                         /// Choose better lower bound between lb_keogh and lb_keogh2 to be used in early abandoning DTW
@@ -372,10 +368,8 @@ public:
                         if( dist < bsf )
                         {   /// Update bsf
                             /// loc is the real starting location of the nearest neighbor in the file
-                            //bsf = dist;
-                            //todo: consider making one big array, keeping track of weakest match, then pruning @ end
-                            matches.insert_match(candidate_position, dist);
-                            bsf = matches.weakest_dist();
+                            register_candidate_callback(candidate_position, dist);
+                            bsf = weakest_distance_callback();
                         }
                     } else
                         keogh2++;
@@ -403,6 +397,6 @@ public:
         printf("Pruned by LB_Keogh2 : %6.2f%%\n", ((double) keogh2 / i)*100);
         printf("DTW Calculation     : %6.2f%%\n", 100-(((double)kim+keogh+keogh2)/i*100));
         */
-        return matches;
     }
+};
 #endif

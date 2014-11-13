@@ -79,7 +79,7 @@ private:
     /// Finding the envelop of min and max value for LB_Keogh
     /// Implementation idea is intoruduced by Danial Lemire in his paper
     /// "Faster Retrieval with a Two-Pass Dynamic-Time-Warping Lower Bound", Pattern Recognition 42(9), 2009.
-    void lower_upper_lemire(double *t, int len, int r, double *l, double *u)
+    void lower_upper_lemire(const double *t, int len, int r, double *l, double *u)
     {
         struct deque du, dl;
 
@@ -131,8 +131,8 @@ public:
     double lower[QUERY_LEN];
     double upper[QUERY_LEN];
     LemireEnvelope() = default;
-    LemireEnvelope(double* t, int r) {
-        lower_upper_lemire(t, QUERY_LEN, r, lower, upper);
+    LemireEnvelope(const std::vector<double>& time_series, size_t start_position, int r) {
+        lower_upper_lemire(time_series.data() + start_position, QUERY_LEN, r, lower, upper);
     }
     ~LemireEnvelope() {}
 };

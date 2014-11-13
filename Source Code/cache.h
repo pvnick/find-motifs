@@ -9,19 +9,20 @@
 
 class CacheEntry {
 public:
-    unsigned int time_series_pos;
-    double series_normalized[QUERY_LEN];
+    size_t time_series_pos;
+    std::vector<double> series_normalized;
     double mean;
     double stddev;
     double range;
-    unsigned int fragment_length;
+    size_t fragment_length;
     LemireEnvelope lemire_envelope;
+    bool initialized;
 
-    CacheEntry(double* time_series, unsigned int position):
-        time_series_pos(position),
-        mean(0),
-        stddev(0)
-    {
+    void init(const std::vector<double>& time_series, size_t position) {
+        time_series_pos = position;
+        mean = 0;
+        stddev = 0;
+        series_normalized.resize(QUERY_LEN);
         double ex = 0, ex2 = 0;
         double min = std::numeric_limits<double>::max(),
                max = std::numeric_limits<double>::min();
@@ -33,41 +34,34 @@ public:
         mean = ex/fragment_length;
         stddev = ex2/fragment_length;
         stddev = sqrt(stddev-mean*mean);
-        for(unsigned int i = 0; i != fragment_length; i++) {
+        for(size_t i = 0; i != fragment_length; i++) {
              double d = time_series[i + time_series_pos];
              series_normalized[i] = (d - mean)/stddev;
              if (d > max) max = d;
              if (d < min) min = d;
         }
-        lemire_envelope = LemireEnvelope(time_series + time_series_pos, WARPING_r);
+        lemire_envelope = LemireEnvelope(time_series, time_series_pos, WARPING_r);
         range = max - min;
+        initialized = true;
     }
-    ~CacheEntry() {}
+
+    CacheEntry(): initialized(false) {}
 };
 
 class Cache {
 private:
-    CacheEntry** entries;
-    vector<double>& time_series;
+    std::vector<CacheEntry> entries;
+    const std::vector<double>& time_series;
 public:
     Cache() = delete;
-    Cache(vector<double>& ts): time_series(ts) {
-        std::cerr << "Cache: Allocating " << TIME_SERIES_LEN * sizeof(CacheEntry) << " bytes of memory for cache entries" << std::endl;
-        entries = new CacheEntry*[TIME_SERIES_LEN];
-        for (int i = 0; i != TIME_SERIES_LEN; ++i)
-            entries[i] = nullptr; //initialize all entries to sentinel value nullptr
+    Cache(const std::vector<double>& ts): time_series(ts) {
+        entries.resize(ts.size());
     }
-    ~Cache() {
-        for (int i = 0; i != TIME_SERIES_LEN; ++i)
-            if (entries[i] != nullptr)
-                delete entries[i];
-        delete[] entries;
-    }
-    CacheEntry& operator[](size_t position) {
-        //memoization lets us only compute relevant cache entries and then reuse them
-        if (entries[position] == nullptr)
-            entries[position] = new Cache(time_series);
-        return *(entries[position]);
+    const CacheEntry& operator[](size_t position) {
+        //memoization lets us compute only relevant cache entries and then reuse them
+        if ( ! entries[position].initialized)
+            entries[position].init(time_series, position);
+        return entries[position];
     }
 };
 

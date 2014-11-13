@@ -88,8 +88,8 @@ int main(int argc, char *argv[])
 #endif
 
     std::string results_file_path = std::string("/scratch/lfs/pvnick/motif_results/") + get_output_filename();
-    MotifFinder engine(SERIES_FILEPATH, TIME_SERIES_LEN, results_file_path);
-    engine.run(start_pos, end_pos, K);
+    MotifFinder engine(SERIES_FILEPATH, TIME_SERIES_LEN, K, results_file_path, '\t');
+    engine.run(start_pos, end_pos, 1);
 
 #ifdef USE_PROFILER
     ProfilerStop();

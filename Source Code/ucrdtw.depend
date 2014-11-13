@@ -13829,13 +13829,13 @@
 	"common.h"
 	"cache.h"
 
-1415209453 source:/home/pvnick/find-motifs/Source Code/main.cpp
+1415841951 source:/home/pvnick/find-motifs/Source Code/main.cpp
 	"common.h"
-	"cache.h"
 	"find_motifs.h"
+	"ucr_dtw.h"
 	"profiler.h"
 
-1415209453 /home/pvnick/find-motifs/Source Code/common.h
+1415839268 /home/pvnick/find-motifs/Source Code/common.h
 	<iostream>
 	<string>
 	<utility>
@@ -13858,15 +13858,21 @@
 	<memory>
 	<vector>
 
-1415209453 /home/pvnick/find-motifs/Source Code/cache.h
+1415840327 /home/pvnick/find-motifs/Source Code/cache.h
 	"common.h"
 	"lemire_envelope.h"
 	<limits>
 
-1415209453 /home/pvnick/find-motifs/Source Code/lemire_envelope.h
+1415840522 /home/pvnick/find-motifs/Source Code/lemire_envelope.h
 	"common.h"
 
-1415209453 /home/pvnick/find-motifs/Source Code/find_motifs.h
+1415841964 /home/pvnick/find-motifs/Source Code/find_motifs.h
+	"common.h"
+	"cache.h"
+	"ucr_dtw.h"
+	<limits>
+
+1415841756 /home/pvnick/find-motifs/Source Code/ucr_dtw.h
 	"common.h"
 	"cache.h"
 
