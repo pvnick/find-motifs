@@ -1,0 +1,29 @@
+#ifndef _CANDIDATE_H_
+#define _CANDIDATE_H_
+
+struct Candidate {
+private:
+    static constexpr double max_dist = std::numeric_limits<double>::max();
+public:
+    double dist;
+    size_t loc;
+    size_t query_loc;
+    size_t winner_tree_external_index; //holding this allows faster updating of the top-k tree
+    Candidate() {
+        reset();
+    };
+    bool is_valid() const {
+        //since candidates must be at least QUERY_LEN points past the start of the time series, their location can't be zero
+        return loc != 0;
+    }
+    void reset() {
+        dist = max_dist;
+        loc = 0;
+        query_loc = 0;
+    }
+    bool operator==(const Candidate& rhs) {
+        return query_loc == rhs.query_loc && loc == rhs.loc;
+    }
+};
+
+#endif // _CANDIDATE_H_

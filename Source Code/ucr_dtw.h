@@ -246,8 +246,8 @@ public:
 
     void single_pass(size_t query_position,
                      size_t candidate_increment,
-                     std::function<dist_type()> weakest_distance_callback,
-                     std::function<void(size_t, dist_type)> register_candidate_callback)
+                     std::function<double()> weakest_distance_callback,
+                     std::function<void(size_t, double)> register_candidate_callback)
     {
         Subsequence const& query = subsequences[query_position];
         const unsigned int m = QUERY_LEN;

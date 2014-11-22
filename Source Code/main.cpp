@@ -1,14 +1,6 @@
 //config
 #define USE_MPI
 
-//hardcoded values to prevent memory allocation
-#define TIME_SERIES_LEN 1663231
-#define QUERY_LEN 100
-#define MIN_RANGE 5
-#define WARPING_WINDOW 0.05
-#define WARPING_r (WARPING_WINDOW <= 1) ? (const int)(WARPING_WINDOW * QUERY_LEN) : (const int)WARPING_WINDOW
-#define SERIES_FILEPATH "/scratch/lfs/pvnick/oximetry.txt"
-
 #include "common.h"
 #include "find_motifs.h"
 #include "ucr_dtw.h"
@@ -23,6 +15,10 @@
 #endif
 
 namespace program_options = boost::program_options;
+
+double lg(double x) {
+    return log(x) / log(2);
+}
 
 unsigned int get_query_start_pos() {
     if (use_mpi) {
