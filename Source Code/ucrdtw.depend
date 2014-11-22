@@ -13829,7 +13829,7 @@
 	"common.h"
 	"cache.h"
 
-1415841951 source:/home/pvnick/find-motifs/Source Code/main.cpp
+1416658610 source:/home/pvnick/find-motifs/Source Code/main.cpp
 	"common.h"
 	"find_motifs.h"
 	"ucr_dtw.h"
@@ -13866,13 +13866,18 @@
 1415840522 /home/pvnick/find-motifs/Source Code/lemire_envelope.h
 	"common.h"
 
-1415841964 /home/pvnick/find-motifs/Source Code/find_motifs.h
+1416658867 /home/pvnick/find-motifs/Source Code/find_motifs.h
 	"common.h"
-	"cache.h"
+	"subsequence.h"
 	"ucr_dtw.h"
 	<limits>
 
-1415841756 /home/pvnick/find-motifs/Source Code/ucr_dtw.h
+1416659257 /home/pvnick/find-motifs/Source Code/ucr_dtw.h
 	"common.h"
-	"cache.h"
+	"subsequence.h"
+
+1416659361 /home/pvnick/find-motifs/Source Code/subsequence.h
+	"common.h"
+	"lemire_envelope.h"
+	<limits>
 

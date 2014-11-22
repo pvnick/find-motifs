@@ -2,9 +2,16 @@
 #define _FIND_MOTIFS_H_
 
 #include "common.h"
-#include "subsequence.h"
+#include "cache.h"
 #include "ucr_dtw.h"
 #include <limits>
+
+/*note to self:
+call signatures should generally be one of the following:
+bar(foo f); // want to obtain a copy of f
+bar(const foo& f); // want to read f
+bar(foo* f); // want to modify f
+*/
 
 class TopCandidates;
 
@@ -16,14 +23,22 @@ public:
     size_t loc;
     size_t query_loc;
     size_t winner_tree_external_index; //holding this allows faster updating of the top-k tree
+    //if the candidate held in this node is, at a subsequent query position, determined to be a trivial match,
+    //is_disabled will get set to true, and this candidate will be skipped when candidates are outputted
+    bool is_disabled;
     Candidate() {
         reset();
     };
+    void disable() {
+        reset();
+        is_disabled = true;
+    }
     bool is_valid() const {
         //since candidates must be at least QUERY_LEN points past the start of the time series, their location can't be zero
         return loc != 0;
     }
     void reset() {
+        is_disabled = false;
         dist = max_dist;
         loc = 0;
         query_loc = 0;
@@ -78,7 +93,7 @@ private:
         return external_index;
     }
     Node get_winning_child(size_t index) const {
-        //xxx this does *not* do bounds checking. if index points to an external node this will exhibit undefined behavior
+        //xxx this does *not* do bounds checking. if index points to an external node this will display undefined behavior
         const Node& left_child = tree[2 * index];
         const Node& right_child = tree[2 * index + 1];
         if (right_child.is_placeholder == false && right_child.candidate.dist > left_child.candidate.dist)
@@ -153,7 +168,7 @@ public:
             tree[i].is_placeholder = true;
         prepare_subtree(1);
     }
-    Candidate const& weakest_candidate() const {
+    Candidate weakest_candidate() const {
         return tree[1].candidate;
     }
     size_t weakest_candidate_external_index() const {
@@ -169,6 +184,15 @@ public:
     void replace_weakest_candidate(Candidate const& new_candidate) {
         replace_candidate(weakest_candidate(), new_candidate);
     }
+    void disable_candidate_external_node(Candidate& to_disable) {
+        //if this tree does not correspond to the active query - only time this function will be called - theres
+        //no reason to maintain tree structure (no more potential incomming candidates, we're just waiting to
+        //output the non-disabled ones) so this function should not be called if this class instance
+        //belongs to the current query; replace_candidate should be used instead
+        size_t external_index = to_disable.winner_tree_external_index;
+        assert(tree[external_index].candidate == to_disable);
+        tree[external_index].candidate.disable();
+    }
     void reset() {
         //this function allows us to reuse this class instance for a new query.
         //reset the left K external nodes
@@ -181,19 +205,15 @@ public:
 };
 
 //the following class uses a hash table (hashing function is position/QUERY_LEN) and allows us to detect and mitigate
-//trivial matches in constant time. in addition, a linked list is maintained chaining together active hash table items
-//so that they can be quickly traversed and deleted, allowing us to reset/reuse the class instance quickly
+//trivial matches in constant time. there should only be a single instance, since trivial matches are only relevant
+//within the past QUERY_LEN queries.
 class QueryLookup {
 private:
     struct CandidateBucket {
+        //buckets only have space for a single candidate since we only hold buckets for
+        //the most recent QUERY_LEN queries
         Candidate candidate;
         bool contains_candidate;
-
-        //maintain a bucket list for fast reset()
-        size_t prev_bucket_index;
-        bool points_to_prev_bucket;
-        size_t next_bucket_index;
-        bool points_to_next_bucket;
         bool detect_trivial_match(size_t other_candidate_position) const {
             return contains_candidate && std::abs(candidate.loc - other_candidate_position) < QUERY_LEN;
         }
@@ -204,11 +224,9 @@ private:
             contains_candidate = true;
             candidate = c;
         }
-        CandidateBucket(): contains_candidate(false), points_to_prev_bucket(false), points_to_next_bucket(false) {}
     };
-    CandidateBucket bucket_list_head; //this acts as a dummy node in the bucket list
-    const size_t num_buckets;
     std::vector<CandidateBucket> buckets;
+    size_t num_buckets;
     size_t get_bucket_index(size_t candidate_position) const {
         return candidate_position / QUERY_LEN;
     }
@@ -222,33 +240,17 @@ private:
         if (buckets[bucket_index].detect_trivial_match(new_candidate_position)) {
             return &buckets[bucket_index];
         }
-        //the following condition should never be hit since we do check for trivial matches
-        //against previous queries (so there should never be trivial match candidate which is
-        //at a greater position than new_candidate), but is included for ADT completeness
         if (bucket_index + 1 < num_buckets && buckets[bucket_index + 1].detect_trivial_match(new_candidate_position)) {
             return &buckets[bucket_index + 1];
         }
         return nullptr;
     }
-    void empty_bucket(CandidateBucket* bucket) {
-        bucket->pop_candidate();
-        if (bucket->points_to_prev_bucket) {
-            CandidateBucket& prev_bucket = buckets[bucket->prev_bucket_index];
-            prev_bucket.points_to_next_bucket = bucket->points_to_next_bucket;
-            prev_bucket.next_bucket_index = bucket->next_bucket_index;
-        }
-        if (bucket->points_to_next_bucket) {
-            CandidateBucket& next_bucket = buckets[bucket->next_bucket_index];
-            next_bucket.points_to_prev_bucket = bucket->points_to_prev_bucket;
-            next_bucket.prev_bucket_index = bucket->prev_bucket_index;
-        }
-    }
 public:
-    QueryLookup():
-        num_buckets(ceil(static_cast<float>(TIME_SERIES_LEN) / QUERY_LEN)),
-        buckets(num_buckets)
-    {}
-    bool detect_trivial_match(Candidate const& new_candidate, Candidate* old_candidate) {
+    QueryLookup() {
+        num_buckets = ceil(static_cast<float>(TIME_SERIES_LEN) / QUERY_LEN);
+        buckets.resize(num_buckets);
+    }
+    bool detect_trivial_match(const Candidate& new_candidate, Candidate* old_candidate) {
         CandidateBucket* bucket = get_trivial_match_bucket(new_candidate);
         if (bucket) {
             *old_candidate = bucket->candidate;
@@ -258,7 +260,7 @@ public:
     }
     void pop_candidate(Candidate const& old_candidate) {
         size_t bucket_index = get_bucket_index(old_candidate.loc);
-        empty_bucket(&buckets[bucket_index]);
+        buckets[bucket_index].pop_candidate();
     }
     void push_candidate(Candidate const& new_candidate) {
         //note: this indiscriminately replaces a previous candidate with the new candidate, regardless
@@ -267,29 +269,7 @@ public:
         if (old_candidate_bucket)
             old_candidate_bucket->pop_candidate();
         size_t bucket_index = get_bucket_index(new_candidate.loc);
-        CandidateBucket& bucket = buckets[bucket_index];
-        bucket.push_candidate(new_candidate);
-        if (bucket_list_head.points_to_next_bucket) {
-            bucket.next_bucket_index = bucket_list_head.next_bucket_index;
-            bucket.points_to_next_bucket = true;
-            CandidateBucket& other_bucket = buckets[bucket_list_head.next_bucket_index];
-            other_bucket.prev_bucket_index = bucket_index;
-            other_bucket.points_to_prev_bucket = true;
-        }
-        bucket_list_head.next_bucket_index = bucket_index;
-        bucket_list_head.points_to_next_bucket = true;
-    }
-    void reset() {
-        //delete all buckets by traversing the list containing the active ones.
-        //bucket_list_head is not contained within the bucket vector, so it is *not* pointed to
-        //by the first node in the bucket list. therefore, we use a pointer to iterate over all
-        //the buckets and delete them.
-        CandidateBucket* bucket_ptr = &bucket_list_head;
-        while (bucket_ptr->points_to_next_bucket) {
-            bucket_ptr = &buckets[bucket_ptr->next_bucket_index];
-            empty_bucket(bucket_ptr);
-        }
-        bucket_list_head.points_to_next_bucket = false;
+        buckets[bucket_index].push_candidate(new_candidate);
     }
 };
 
@@ -299,40 +279,52 @@ private:
     QueryLookup query_lookup;
     std::ofstream results_output;
     const char field_separator;
-    TopCandidates top_k;
-    SubsequenceLookup subsequences;
+    //top_k_query_candidates is a circular buffer that holds the best candidates for the last QUERY_LEN queries.
+    //it is used to detect and ignore trivial matches.
+    std::vector<TopCandidates> top_k_query_candidates;
+    Cache cache;
     size_t curr_query_loc;
-    void output_and_disregard_top_k() {
+    TopCandidates& get_top_k(size_t query_loc) {
+        size_t circ_buff_index = query_loc % QUERY_LEN;
+        TopCandidates& top_k = top_k_query_candidates[circ_buff_index];
+        return top_k;
+    }
+    void output_and_disregard_top_k(size_t query_loc) {
+        TopCandidates& top_k = get_top_k(query_loc);
         TopCandidates::iterator iter_end = top_k.end();
         for (auto iter = top_k.begin(); iter != iter_end; ++iter) {
             Candidate c = *iter;
             results_output << c.query_loc << field_separator << c.loc << field_separator << c.dist << std::endl;
+            //no more trivial matches to this candidate
+            query_lookup.pop_candidate(c);
         }
         top_k.reset();
-        query_lookup.reset();
     }
 public:
     MotifFinder(std::string const& series_filepath, size_t series_len, unsigned int K, std::string const& output_filepath, const char results_field_separator):
         time_series(series_len),
         results_output(output_filepath, std::ofstream::out | std::ofstream::trunc),
         field_separator(results_field_separator),
-        top_k(K),
-        subsequences(time_series)
+        top_k_query_candidates(QUERY_LEN, TopCandidates(K)),
+        cache(time_series),
+        curr_query_loc(0)
     {
         std::cerr << "Reading time series data file" << std::endl;
         std::ifstream in(series_filepath);
-        size_t i = 0;
-        while (in >> time_series[i++]);
-        std::cout << time_series[0] << std::endl;
+        double point;
+        while (in >> point)
+            time_series.push_back(point);
         in.close();
     }
     dist_type weakest_distance() {
+        TopCandidates& top_k = get_top_k(curr_query_loc);
         const Candidate& weakest_candidate = top_k.weakest_candidate();
         return weakest_candidate.dist;
     }
     void try_register_candidate(size_t new_candidate_index, dist_type distance) {
         //note: this function does not check to see that the new candidate is actually better and worth remembering.
         //that responsibility is left to the client, who should be checking that with weakest_distance
+        TopCandidates& curr_top_k = get_top_k(curr_query_loc);
         Candidate new_candidate;
         new_candidate.dist = distance;
         new_candidate.query_loc = curr_query_loc;
@@ -340,34 +332,50 @@ public:
         Candidate old_candidate;
         if (query_lookup.detect_trivial_match(new_candidate, &old_candidate)) {
             //found a trivial match
-            assert(old_candidate.query_loc == new_candidate.query_loc);
             if (new_candidate.dist < old_candidate.dist) {
                 //old candidate is trivial match (new is better), so disregard old and register the new one
                 query_lookup.push_candidate(new_candidate);
-                top_k.replace_candidate(old_candidate, new_candidate);
+                if (old_candidate.query_loc == new_candidate.query_loc) {
+                    //trivial match to candidate of current query
+                    curr_top_k.replace_candidate(old_candidate, new_candidate);
+                } else {
+                    //trivial match to candidate of previous query
+                    TopCandidates& prev_top_k = get_top_k(old_candidate.query_loc);
+                    prev_top_k.disable_candidate_external_node(old_candidate);
+                }
             }
         } else {
             //no trivial match
             query_lookup.push_candidate(new_candidate);
-            top_k.replace_weakest_candidate(new_candidate);
+            curr_top_k.replace_weakest_candidate(new_candidate);
         }
     }
     void run(size_t start_pos, size_t end_pos, size_t candidate_increment) {
         using namespace std::placeholders;
-        UCR_DTW subsequence_search(subsequences);
+        UCR_DTW subsequence_search(&cache);
         auto weakest_dist_callback = std::bind(&MotifFinder::weakest_distance, this);
         auto register_candidate_callback = std::bind(&MotifFinder::try_register_candidate, this, _1, _2);
         for (size_t i = start_pos; i != end_pos; ++i) {
             curr_query_loc = i;
             subsequence_search.single_pass(i, candidate_increment, weakest_dist_callback, register_candidate_callback);
-            output_and_disregard_top_k();
+            if (i - start_pos >= QUERY_LEN) {
+                //no more trivial to oldest query stored in the circular buffer
+                output_and_disregard_top_k(i - QUERY_LEN);
+            }
         }
-    }
-    std::vector<double> const& get_timeseries() {
-        return time_series;
-    }
-    SubsequenceLookup const& get_subsequence_lookup() {
-        return subsequences;
+/*
+ 32 void do_call(std::function<void(std::string, std::string)> f) {
+ 33     f("hello globe", "goodbye");
+ 34 }
+ 35
+ 36 void callfunc() {
+ 37     using namespace std::placeholders;  // for _1, _2, _3...
+ 38     foo f;
+ 39     auto f3 = std::bind(&foo::testfunc, &f, _1, _2);
+ 40     do_call(f3);
+ 41 }
+ 42
+*/
     }
 };
 

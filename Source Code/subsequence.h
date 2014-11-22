@@ -1,13 +1,13 @@
 //todo: I think this is possible to do without shared memory!
 //
-#ifndef _CACHE_H_
-#define _CACHE_H_
+#ifndef _SUBSEQUENCE_H_
+#define _SUBSEQUENCE_H_
 
 #include "common.h"
 #include "lemire_envelope.h"
 #include <limits>
 
-class CacheEntry {
+class Subsequence {
 public:
     size_t time_series_pos;
     std::vector<double> series_normalized;
@@ -45,24 +45,24 @@ public:
         initialized = true;
     }
 
-    CacheEntry(): initialized(false) {}
+    Subsequence(): initialized(false) {}
 };
 
-class Cache {
+class SubsequenceLookup {
 private:
-    std::vector<CacheEntry> entries;
+    std::vector<Subsequence> entries;
     const std::vector<double>& time_series;
 public:
-    Cache() = delete;
-    Cache(const std::vector<double>& ts): time_series(ts) {
+    SubsequenceLookup() = delete;
+    SubsequenceLookup(const std::vector<double>& ts): time_series(ts) {
         entries.resize(ts.size());
     }
-    const CacheEntry& operator[](size_t position) {
-        //memoization lets us compute only relevant cache entries and then reuse them
+    Subsequence const& operator[](size_t position) {
+        //memoization lets us compute only relevant subsequence entries and then reuse them
         if ( ! entries[position].initialized)
             entries[position].init(time_series, position);
         return entries[position];
     }
 };
 
-#endif // _CACHE_H_
+#endif // _SUBSEQUENCE_H_

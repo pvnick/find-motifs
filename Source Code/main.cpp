@@ -68,6 +68,75 @@ std::ostream& msgl(std::string str) {
     return msg(str) << std::endl;
 }
 
+
+/// Calculate Dynamic Time Wrapping distance
+/// A,B: data and query, respectively
+/// cb : cummulative bound used for early abandoning
+/// r  : size of Sakoe-Chiba warpping band
+double dtw(const std::vector<double>& A, const std::vector<double>& B, double *cb, int m, double bsf = INF)
+{
+    const int r = WARPING_r;
+    double buffer1[2 * r + 1];
+    double buffer2[2 * r + 1];
+    /// Instead of using matrix of size O(m^2) or O(mr), we will reuse two array of size O(r).
+    for(int k=0; k<2*r+1; k++)
+        buffer1[k] = buffer2[k] = INF;
+
+    double *cost = buffer1;
+    double *cost_prev = buffer2;
+    double *cost_tmp;
+    int i,j,k;
+    double x,y,z,min_cost;
+
+
+    for (i=0; i<m; i++)
+    {
+        k = std::max(0,r-i);
+        min_cost = INF;
+
+        for(j=std::max(0,i-r); j<=std::min(m-1,i+r); j++, k++)
+        {
+            /// Initialize all row and column
+            if ((i==0)&&(j==0))
+            {
+                cost[k]=dist(A[0],B[0]);
+                min_cost = cost[k];
+                continue;
+            }
+
+            if ((j-1<0)||(k-1<0))     y = INF;
+            else                      y = cost[k-1];
+            if ((i-1<0)||(k+1>2*r))   x = INF;
+            else                      x = cost_prev[k+1];
+            if ((i-1<0)||(j-1<0))     z = INF;
+            else                      z = cost_prev[k];
+
+            /// Classic DTW calculation
+            cost[k] = std::min( std::min( x, y) , z) + dist(A[i],B[j]);
+
+            /// Find minimum cost in row for early abandoning (possibly to use column instead of row).
+            if (cost[k] < min_cost)
+            {   min_cost = cost[k];
+            }
+        }
+
+        /// We can abandon early if the current cummulative distace with lower bound together are larger than bsf
+        //todo: consider removing DTW early abandoning
+        if (i+r < m-1 && min_cost + cb[i+r+1] >= bsf)
+            return min_cost + cb[i+r+1];
+
+        /// Move current array to previous array.
+        cost_tmp = cost;
+        cost = cost_prev;
+        cost_prev = cost_tmp;
+    }
+    k--;
+
+    /// the DTW distance is in the last cell in the matrix of size O(m^2) or at the middle of our array.
+    double final_dtw = cost_prev[k];
+    return final_dtw;
+}
+
 #ifdef USE_PROFILER
     #include "profiler.h"
 #endif
@@ -88,8 +157,14 @@ int main(int argc, char *argv[])
 #endif
 
     std::string results_file_path = std::string("/scratch/lfs/pvnick/motif_results/") + get_output_filename();
-    MotifFinder engine(SERIES_FILEPATH, TIME_SERIES_LEN, K, results_file_path, '\t');
-    engine.run(start_pos, end_pos, 1);
+    std::string series_filepath = "/home/pvnick/oximetry/data/oximetry.txt";
+    MotifFinder engine(series_filepath, TIME_SERIES_LEN, K, results_file_path, '\t');
+    //engine.run(start_pos, end_pos, 1);
+    std::vector<double> const& time_series = engine.get_timeseries();
+    std::cout << time_series[2] << std::endl;
+    SubsequenceLookup subsequences = engine.get_subsequence_lookup();
+    Subsequence const& subsequence = subsequences[5];
+    std::cout << subsequence.time_series_pos << std::endl;
 
 #ifdef USE_PROFILER
     ProfilerStop();

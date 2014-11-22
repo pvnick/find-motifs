@@ -57,6 +57,7 @@
 		<Unit filename="find_motifs.h" />
 		<Unit filename="lemire_envelope.h" />
 		<Unit filename="main.cpp" />
+		<Unit filename="ucr_dtw.h" />
 		<Extensions>
 			<code_completion />
 			<debugger />

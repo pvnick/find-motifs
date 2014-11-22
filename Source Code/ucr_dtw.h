@@ -26,7 +26,7 @@
 
 
 #include "common.h"
-#include "cache.h"
+#include "subsequence.h"
 
 #define dist(x,y) ((x-y)*(x-y))
 
@@ -34,7 +34,7 @@
 
 class UCR_DTW {
 private:
-    Cache& cache;
+    SubsequenceLookup& subsequences;
 
     /// Data structure for sorting the query
     typedef struct Index
@@ -54,45 +54,45 @@ private:
     /// However, because of z-normalization the top and bottom cannot give siginifant benefits.
     /// And using the first and last points can be computed in constant time.
     /// The prunning power of LB_Kim is non-trivial, especially when the query is not long, say in length 128.
-    double lb_kim_hierarchy(const CacheEntry& q_cache, const CacheEntry& c_cache, int len, double bsf = INF) const {
+    double lb_kim_hierarchy(Subsequence const& query, Subsequence const& candidate, int len, double bsf = INF) const {
         /// 1 point at front and back
         double d, lb;
-        double x0 = c_cache.series_normalized[0];
-        double y0 = c_cache.series_normalized[len - 1];
-        lb = dist(x0, q_cache.series_normalized[0]) + dist(y0, q_cache.series_normalized[len - 1]);
+        double x0 = candidate.series_normalized[0];
+        double y0 = candidate.series_normalized[len - 1];
+        lb = dist(x0, query.series_normalized[0]) + dist(y0, query.series_normalized[len - 1]);
         if (lb >= bsf)   return lb;
 
         /// 2 points at front
-        double x1 = c_cache.series_normalized[1];
-        d = std::min(dist(x1, q_cache.series_normalized[0]), dist(x0, q_cache.series_normalized[1]));
-        d = std::min(d, dist(x1, q_cache.series_normalized[1]));
+        double x1 = candidate.series_normalized[1];
+        d = std::min(dist(x1, query.series_normalized[0]), dist(x0, query.series_normalized[1]));
+        d = std::min(d, dist(x1, query.series_normalized[1]));
         lb += d;
         if (lb >= bsf)   return lb;
 
         /// 2 points at back
-        double y1 = c_cache.series_normalized[len - 2];
-        d = std::min(dist(y1, q_cache.series_normalized[len - 1]), dist(y0, q_cache.series_normalized[len - 2]));
-        d = std::min(d, dist(y1, q_cache.series_normalized[len - 2]));
+        double y1 = candidate.series_normalized[len - 2];
+        d = std::min(dist(y1, query.series_normalized[len - 1]), dist(y0, query.series_normalized[len - 2]));
+        d = std::min(d, dist(y1, query.series_normalized[len - 2]));
 
         lb += d;
         if (lb >= bsf)   return lb;
 
         /// 3 points at front
-        double x2 = c_cache.series_normalized[2];
-        d = std::min(dist(x0, q_cache.series_normalized[2]), dist(x1, q_cache.series_normalized[2]));
-        d = std::min(d, dist(x2, q_cache.series_normalized[2]));
-        d = std::min(d, dist(x2, q_cache.series_normalized[1]));
-        d = std::min(d, dist(x2, q_cache.series_normalized[0]));
+        double x2 = candidate.series_normalized[2];
+        d = std::min(dist(x0, query.series_normalized[2]), dist(x1, query.series_normalized[2]));
+        d = std::min(d, dist(x2, query.series_normalized[2]));
+        d = std::min(d, dist(x2, query.series_normalized[1]));
+        d = std::min(d, dist(x2, query.series_normalized[0]));
         lb += d;
         if (lb >= bsf)   return lb;
 
         /// 3 points at back
-        double y2 = c_cache.series_normalized[len - 3];
+        double y2 = candidate.series_normalized[len - 3];
         //XXX I think the following line is wrong: it doesn't match the previous patterns
-        d = std::min(dist(y0, q_cache.series_normalized[len - 3]), dist(y1, q_cache.series_normalized[len - 3]));
-        d = std::min(d, dist(y2, q_cache.series_normalized[len - 3]));
-        d = std::min(d, dist(y2, q_cache.series_normalized[len - 2]));
-        d = std::min(d, dist(y2, q_cache.series_normalized[len - 1]));
+        d = std::min(dist(y0, query.series_normalized[len - 3]), dist(y1, query.series_normalized[len - 3]));
+        d = std::min(d, dist(y2, query.series_normalized[len - 3]));
+        d = std::min(d, dist(y2, query.series_normalized[len - 2]));
+        d = std::min(d, dist(y2, query.series_normalized[len - 1]));
         lb += d;
 
         return lb;
@@ -107,14 +107,14 @@ private:
     /// t     : a circular array keeping the current data.
     /// j     : index of the starting location in t
     /// cb    : (output) current bound at each position. It will be used later for early abandoning in DTW.
-    double lb_keogh_cumulative(const CacheEntry& candidate_cache_entry, int* order, double *uo, double *lo, double *cb, int len, double best_so_far)
+    double lb_keogh_cumulative(Subsequence const& candidate, int* order, double *uo, double *lo, double *cb, int len, double best_so_far)
     {
         double lb = 0;
         double x, d;
 
         for (int i = 0; i < len && lb < best_so_far; i++)
         {
-            x = candidate_cache_entry.series_normalized[order[i]];
+            x = candidate.series_normalized[order[i]];
             d = 0;
             if (x > uo[i])
                 d = dist(x,uo[i]);
@@ -239,25 +239,19 @@ private:
             printf("ERROR : File not Found!!!\n\n");
         else if ( id == 3 )
             printf("ERROR : Can't create Output File!!!\n\n");
-        else if ( id == 4 )
-        {
-            printf("ERROR : Invalid Number of Arguments!!!\n");
-            printf("Command Usage:  UCR_DTW.exe  data-file  query-file   m   R\n\n");
-            printf("For example  :  UCR_DTW.exe  data.txt   query.txt   128  0.05\n");
-        }
         exit(1);
     }
 public:
-    UCR_DTW(Cache* cache_ptr): cache(*cache_ptr) {}
+    UCR_DTW(SubsequenceLookup& subsequence_lookup): subsequences(subsequence_lookup) {}
 
     void single_pass(size_t query_position,
                      size_t candidate_increment,
                      std::function<dist_type()> weakest_distance_callback,
                      std::function<void(size_t, dist_type)> register_candidate_callback)
     {
-        const CacheEntry& cached_query_data = cache[query_position];
+        Subsequence const& query = subsequences[query_position];
         const unsigned int m = QUERY_LEN;
-        if (cached_query_data.range < MIN_RANGE) {
+        if (query.range < MIN_RANGE) {
             msgl("Range is too small, skipping");
             return;
         }
@@ -283,11 +277,11 @@ public:
 
         bsf = INF;
         i = 0;
-        const std::vector<double>& q = cached_query_data.series_normalized;
+        const std::vector<double>& q = query.series_normalized;
 
         /// Create envelop of the query: lower envelop, l, and upper envelop, u
-        const double* l = cached_query_data.lemire_envelope.lower;
-        const double* u = cached_query_data.lemire_envelope.upper;
+        const double* l = query.lemire_envelope.lower;
+        const double* u = query.lemire_envelope.upper;
 
         /// Sort the query one time by abs(z-norm(q[i]))
         //todo: consider storing sorted query in cache (will this help anything?)
@@ -318,27 +312,27 @@ public:
 
         std::cerr << "starting: " << query_position << std::endl;
         for (size_t candidate_position = query_position + m; candidate_position < TIME_SERIES_LEN - m; candidate_position += candidate_increment) {
-            const CacheEntry& cached_candidate_data = cache[candidate_position];
-            if (cached_candidate_data.range < MIN_RANGE) {
+            Subsequence const& candidate = subsequences[candidate_position];
+            if (candidate.range < MIN_RANGE) {
                 continue;
             }
-            const double* l_buff = cached_candidate_data.lemire_envelope.lower;
-            const double* u_buff = cached_candidate_data.lemire_envelope.upper;
-            mean = cached_candidate_data.mean;
-            stddev = cached_candidate_data.stddev;
+            const double* l_buff = candidate.lemire_envelope.lower;
+            const double* u_buff = candidate.lemire_envelope.upper;
+            mean = candidate.mean;
+            stddev = candidate.stddev;
 
             /// Use a constant lower bound to prune the obvious subsequence
-            lb_kim = lb_kim_hierarchy(cached_query_data, cached_candidate_data, m, bsf);
+            lb_kim = lb_kim_hierarchy(query, candidate, m, bsf);
 
 
             if (lb_kim < bsf)
             {
                 /// Use a linear time lower bound to prune; z_normalization of t will be computed on the fly.
                 /// uo, lo are envelop of the query.
-                lb_k = lb_keogh_cumulative(cached_candidate_data, order, uo, lo, cb1, m, bsf);
+                lb_k = lb_keogh_cumulative(candidate, order, uo, lo, cb1, m, bsf);
                 if (lb_k < bsf)
                 {
-                    const std::vector<double>& tz = cached_candidate_data.series_normalized;
+                    const std::vector<double>& tz = candidate.series_normalized;
 
                     /// Use another lb_keogh to prune
                     /// qo is the sorted query. tz is unsorted z_normalized data.
