@@ -63,6 +63,7 @@ public:
             entries[position].init(time_series, position);
         return entries[position];
     }
+    Subsequence operator=(Subsequence const& rhs) = delete;
 };
 
 #endif // _SUBSEQUENCE_H_

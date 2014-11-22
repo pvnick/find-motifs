@@ -155,6 +155,27 @@ private:
         return lb;
     }
 
+    /// Print function for debugging
+    void printArray(double *x, int len)
+    {   for(int i=0; i<len; i++)
+            printf(" %6.2lf",x[i]);
+        printf("\n");
+    }
+
+    /// If expected error happens, teminated the program.
+    void error(int id)
+    {
+        if(id==1)
+            printf("ERROR : Memory can't be allocated!!!\n\n");
+        else if ( id == 2 )
+            printf("ERROR : File not Found!!!\n\n");
+        else if ( id == 3 )
+            printf("ERROR : Can't create Output File!!!\n\n");
+        exit(1);
+    }
+public:
+    UCR_DTW(SubsequenceLookup& subsequence_lookup): subsequences(subsequence_lookup) {}
+
     /// Calculate Dynamic Time Wrapping distance
     /// A,B: data and query, respectively
     /// cb : cummulative bound used for early abandoning
@@ -222,27 +243,6 @@ private:
         double final_dtw = cost_prev[k];
         return final_dtw;
     }
-
-    /// Print function for debugging
-    void printArray(double *x, int len)
-    {   for(int i=0; i<len; i++)
-            printf(" %6.2lf",x[i]);
-        printf("\n");
-    }
-
-    /// If expected error happens, teminated the program.
-    void error(int id)
-    {
-        if(id==1)
-            printf("ERROR : Memory can't be allocated!!!\n\n");
-        else if ( id == 2 )
-            printf("ERROR : File not Found!!!\n\n");
-        else if ( id == 3 )
-            printf("ERROR : Can't create Output File!!!\n\n");
-        exit(1);
-    }
-public:
-    UCR_DTW(SubsequenceLookup& subsequence_lookup): subsequences(subsequence_lookup) {}
 
     void single_pass(size_t query_position,
                      size_t candidate_increment,

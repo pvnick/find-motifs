@@ -5,6 +5,7 @@
 #include "subsequence.h"
 #include "ucr_dtw.h"
 #include <limits>
+#include <fstream>
 
 class TopCandidates;
 
@@ -352,12 +353,12 @@ public:
             top_k.replace_weakest_candidate(new_candidate);
         }
     }
-    void run(size_t start_pos, size_t end_pos, size_t candidate_increment) {
+    void run(size_t start_pos, size_t candidate_increment) {
         using namespace std::placeholders;
         UCR_DTW subsequence_search(subsequences);
         auto weakest_dist_callback = std::bind(&MotifFinder::weakest_distance, this);
         auto register_candidate_callback = std::bind(&MotifFinder::try_register_candidate, this, _1, _2);
-        for (size_t i = start_pos; i != end_pos; ++i) {
+        for (size_t i = start_pos; i < TIME_SERIES_LEN; i += candidate_increment) {
             curr_query_loc = i;
             subsequence_search.single_pass(i, candidate_increment, weakest_dist_callback, register_candidate_callback);
             output_and_disregard_top_k();
@@ -366,7 +367,7 @@ public:
     std::vector<double> const& get_timeseries() {
         return time_series;
     }
-    SubsequenceLookup const& get_subsequence_lookup() {
+    SubsequenceLookup& get_subsequence_lookup() {
         return subsequences;
     }
 };

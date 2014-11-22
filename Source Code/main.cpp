@@ -12,6 +12,9 @@
 #include "common.h"
 #include "find_motifs.h"
 #include "ucr_dtw.h"
+#include "cli_options.h"
+#include "postprocessor.h"
+#include <boost/regex.hpp>
 
 #ifdef USE_MPI
     bool use_mpi = true;
@@ -19,25 +22,21 @@
     bool use_mpi = false;
 #endif
 
-size_t distributed_query_start_position(size_t series_length, unsigned int proc_rank, unsigned int num_procs) {
-    size_t search_space_length = floor((float)(num_procs - proc_rank) / num_procs * series_length * (series_length + 1.0) / 2.0);
-    size_t position = ceil(-1.0 / 2.0 * sqrt(8.0 * search_space_length + 1.0) + series_length + 1.0 / 2.0);
-    return position;
-}
+namespace program_options = boost::program_options;
 
-unsigned int query_start_pos() {
+unsigned int get_query_start_pos() {
     if (use_mpi) {
         mpi::communicator world;
-        return distributed_query_start_position(TIME_SERIES_LEN, world.rank(), world.size());
+        return world.rank();
     } else {
         return 0;
     }
 }
 
-unsigned int query_end_pos() {
+unsigned int get_query_increment() {
     if (use_mpi) {
         mpi::communicator world;
-        return distributed_query_start_position(TIME_SERIES_LEN, world.rank() + 1, world.size());
+        return world.size();
     } else {
         return TIME_SERIES_LEN - QUERY_LEN;
     }
@@ -69,72 +68,23 @@ std::ostream& msgl(std::string str) {
 }
 
 
-/// Calculate Dynamic Time Wrapping distance
-/// A,B: data and query, respectively
-/// cb : cummulative bound used for early abandoning
-/// r  : size of Sakoe-Chiba warpping band
-double dtw(const std::vector<double>& A, const std::vector<double>& B, double *cb, int m, double bsf = INF)
-{
-    const int r = WARPING_r;
-    double buffer1[2 * r + 1];
-    double buffer2[2 * r + 1];
-    /// Instead of using matrix of size O(m^2) or O(mr), we will reuse two array of size O(r).
-    for(int k=0; k<2*r+1; k++)
-        buffer1[k] = buffer2[k] = INF;
-
-    double *cost = buffer1;
-    double *cost_prev = buffer2;
-    double *cost_tmp;
-    int i,j,k;
-    double x,y,z,min_cost;
-
-
-    for (i=0; i<m; i++)
-    {
-        k = std::max(0,r-i);
-        min_cost = INF;
-
-        for(j=std::max(0,i-r); j<=std::min(m-1,i+r); j++, k++)
-        {
-            /// Initialize all row and column
-            if ((i==0)&&(j==0))
-            {
-                cost[k]=dist(A[0],B[0]);
-                min_cost = cost[k];
-                continue;
-            }
-
-            if ((j-1<0)||(k-1<0))     y = INF;
-            else                      y = cost[k-1];
-            if ((i-1<0)||(k+1>2*r))   x = INF;
-            else                      x = cost_prev[k+1];
-            if ((i-1<0)||(j-1<0))     z = INF;
-            else                      z = cost_prev[k];
-
-            /// Classic DTW calculation
-            cost[k] = std::min( std::min( x, y) , z) + dist(A[i],B[j]);
-
-            /// Find minimum cost in row for early abandoning (possibly to use column instead of row).
-            if (cost[k] < min_cost)
-            {   min_cost = cost[k];
-            }
-        }
-
-        /// We can abandon early if the current cummulative distace with lower bound together are larger than bsf
-        //todo: consider removing DTW early abandoning
-        if (i+r < m-1 && min_cost + cb[i+r+1] >= bsf)
-            return min_cost + cb[i+r+1];
-
-        /// Move current array to previous array.
-        cost_tmp = cost;
-        cost = cost_prev;
-        cost_prev = cost_tmp;
+void dtw_pair_stream(SubsequenceLookup& subsequences) {
+    //take query/candidate position pairs from stdin and output the dtw distance between the subsequences stored at those positions
+    boost::smatch position_pair;
+    boost::regex expression("^(\\d+) (\\d+)");
+    std::string str = "234 643";
+    std::string::const_iterator start = str.begin();
+    std::string::const_iterator end = str.end();
+    std::vector<double> dummy_vector(QUERY_LEN, 0);
+    if (regex_search(start, end, position_pair, expression)) {
+        size_t query_pos = stoi(std::string(position_pair[1].first, position_pair[1].second));
+        size_t candidate_pos = stoi(std::string(position_pair[2].first, position_pair[2].second));
+        Subsequence const& query = subsequences[query_pos];
+        Subsequence const& candidate = subsequences[candidate_pos];
+        UCR_DTW ucr_dtw(subsequences);
+        double dist = ucr_dtw.dtw(query.series_normalized, candidate.series_normalized, dummy_vector.data(), QUERY_LEN);
+        std::cout << dist << std::endl;
     }
-    k--;
-
-    /// the DTW distance is in the last cell in the matrix of size O(m^2) or at the middle of our array.
-    double final_dtw = cost_prev[k];
-    return final_dtw;
 }
 
 #ifdef USE_PROFILER
@@ -148,26 +98,48 @@ int main(int argc, char *argv[])
 #ifdef USE_MPI
     mpi::environment env(argc, argv);
 #endif
-    unsigned int K = 100;
+    CLIOptions::init(argc, argv);
+    CLIOptions opts = CLIOptions::get_instance();
 
-    size_t start_pos = query_start_pos();
-    size_t end_pos = query_end_pos();
-#ifdef USE_PROFILER
-    ProfilerStart("/tmp/profile");
-#endif
-
+    std::string command = opts["command"].as<std::string>();
     std::string results_file_path = std::string("/scratch/lfs/pvnick/motif_results/") + get_output_filename();
     std::string series_filepath = "/home/pvnick/oximetry/data/oximetry.txt";
+    unsigned int K = opts["K"].as<unsigned int>();
     MotifFinder engine(series_filepath, TIME_SERIES_LEN, K, results_file_path, '\t');
-    //engine.run(start_pos, end_pos, 1);
-    std::vector<double> const& time_series = engine.get_timeseries();
-    std::cout << time_series[2] << std::endl;
-    SubsequenceLookup subsequences = engine.get_subsequence_lookup();
-    Subsequence const& subsequence = subsequences[5];
-    std::cout << subsequence.time_series_pos << std::endl;
+
+    if (command == "postprocess") {
+        SubsequenceLookup& subsequences = engine.get_subsequence_lookup();
+        if (opts.count("input-files")) {
+            std::vector<std::string> input_files = opts["input-files"].as<std::vector<std::string>>();
+            for (std::string i: input_files)
+                std::cout << i << std::endl;
+            PostProcessor post_processor(input_files);
+            post_processor.run();
+        } else {
+            std::cerr << "--input-files required when using postprocess" << std::endl;
+            return 1;
+        }
+    } else if (command == "find-motifs") {
+        size_t query_start_pos = get_query_start_pos();
+        size_t query_increment = get_query_increment();
+#ifdef USE_PROFILER
+        ProfilerStart("/tmp/profile");
+#endif
+
+        //engine.run(query_start_pos, query_increment);
+        std::vector<double> const& time_series = engine.get_timeseries();
+        std::cout << time_series[2] << std::endl;
+        SubsequenceLookup subsequences = engine.get_subsequence_lookup();
+        Subsequence const& subsequence = subsequences[5];
+        std::cout << subsequence.time_series_pos << std::endl;
 
 #ifdef USE_PROFILER
-    ProfilerStop();
+        ProfilerStop();
 #endif
+    } else {
+        std::cerr << "Unknown command " << command << std::endl;
+        return 1;
+    }
+
     return 0;
 }
