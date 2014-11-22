@@ -18,8 +18,8 @@ private:
         bool points_to_prev_bucket;
         size_t next_bucket_index;
         bool points_to_next_bucket;
-        bool detect_trivial_match(size_t other_candidate_position) const {
-            return contains_candidate && std::abs(candidate.loc - other_candidate_position) < QUERY_LEN;
+        bool detect_trivial_match(Candidate const& other_candidate) const {
+            return contains_candidate && candidate.is_candidate_close_to(other_candidate);
         }
         void pop_candidate() {
             contains_candidate = false;
@@ -40,13 +40,13 @@ private:
         //todo: verify this logic - would there ever be two candidates in the vacinity?
         size_t new_candidate_position = new_candidate.loc;
         size_t bucket_index = get_bucket_index(new_candidate_position);
-        if (bucket_index > 0 && buckets[bucket_index - 1].detect_trivial_match(new_candidate_position)) {
+        if (bucket_index > 0 && buckets[bucket_index - 1].detect_trivial_match(new_candidate)) {
             return &buckets[bucket_index - 1];
         }
-        if (buckets[bucket_index].detect_trivial_match(new_candidate_position)) {
+        if (buckets[bucket_index].detect_trivial_match(new_candidate)) {
             return &buckets[bucket_index];
         }
-        if (bucket_index + 1 < num_buckets && buckets[bucket_index + 1].detect_trivial_match(new_candidate_position)) {
+        if (bucket_index + 1 < num_buckets && buckets[bucket_index + 1].detect_trivial_match(new_candidate)) {
             return &buckets[bucket_index + 1];
         }
         return nullptr;
