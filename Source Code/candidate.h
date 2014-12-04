@@ -27,13 +27,11 @@ public:
         return query_loc == rhs.query_loc && loc == rhs.loc;
     }
     bool is_query_close_to(const Candidate& other) const {
-        //todo: verify this is correct and not off by one error
         size_t max_loc = std::max(query_loc, other.query_loc);
         size_t min_loc = std::min(query_loc, other.query_loc);
         return max_loc - min_loc < QUERY_LEN;
     }
     bool is_candidate_close_to(const Candidate& other) const {
-        //todo: verify this is correct and not off by one error
         size_t max_loc = std::max(loc, other.loc);
         size_t min_loc = std::min(loc, other.loc);
         return max_loc - min_loc < QUERY_LEN;

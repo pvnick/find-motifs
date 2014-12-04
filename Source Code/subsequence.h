@@ -53,7 +53,6 @@ private:
     std::vector<Subsequence> entries;
     const std::vector<double>& time_series;
 public:
-    SubsequenceLookup() = delete;
     SubsequenceLookup(const std::vector<double>& ts): time_series(ts) {
         entries.resize(ts.size());
     }

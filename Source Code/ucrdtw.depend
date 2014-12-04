@@ -13829,7 +13829,7 @@
 	"common.h"
 	"cache.h"
 
-1416686806 source:/home/pvnick/find-motifs/Source Code/main.cpp
+1417734143 source:/home/pvnick/find-motifs/Source Code/main.cpp
 	"common.h"
 	"find_motifs.h"
 	"ucr_dtw.h"
@@ -13838,7 +13838,7 @@
 	<boost/regex.hpp>
 	"profiler.h"
 
-1416686816 /home/pvnick/find-motifs/Source Code/common.h
+1417734135 /home/pvnick/find-motifs/Source Code/common.h
 	<iostream>
 	<string>
 	<utility>
@@ -13881,7 +13881,7 @@
 	"common.h"
 	"subsequence.h"
 
-1416670480 /home/pvnick/find-motifs/Source Code/subsequence.h
+1416704417 /home/pvnick/find-motifs/Source Code/subsequence.h
 	"common.h"
 	"lemire_envelope.h"
 	<limits>
@@ -13893,20 +13893,28 @@
 1416663620 source:/home/pvnick/find-motifs/Source Code/cli_options.cpp
 	"cli_options.h"
 
-1416697109 /home/pvnick/find-motifs/Source Code/postprocessor.h
+1417735484 /home/pvnick/find-motifs/Source Code/postprocessor.h
 	<fstream>
 	<queue>
 	<boost/regex.hpp>
 	<iomanip>
+	<iterator>
 	"trivial_match_map.h"
+	"pipeline.h"
 
 1416682647 source:/home/pvnick/find-motifs/Source Code/postprocessor.cpp
 	"postprocessor.h"
 
-1416695970 /home/pvnick/find-motifs/Source Code/candidate.h
+1416779943 /home/pvnick/find-motifs/Source Code/candidate.h
 	"common.h"
 
 1416695689 /home/pvnick/find-motifs/Source Code/trivial_match_map.h
 	"candidate.h"
 	"common.h"
+
+1417730164 /home/pvnick/find-motifs/Source Code/pipeline.h
+	<iostream>
+	<vector>
+	<algorithm>
+	<functional>
 
