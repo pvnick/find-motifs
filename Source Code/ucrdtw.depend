@@ -13829,14 +13829,14 @@
 	"common.h"
 	"cache.h"
 
-1417734143 source:/home/pvnick/find-motifs/Source Code/main.cpp
+1417776579 source:/home/pvnick/find-motifs/Source Code/main.cpp
 	"common.h"
 	"find_motifs.h"
 	"ucr_dtw.h"
 	"cli_options.h"
 	"postprocessor.h"
 	<boost/regex.hpp>
-	"profiler.h"
+	<profiler.h>
 
 1417734135 /home/pvnick/find-motifs/Source Code/common.h
 	<iostream>
@@ -13893,14 +13893,19 @@
 1416663620 source:/home/pvnick/find-motifs/Source Code/cli_options.cpp
 	"cli_options.h"
 
-1417735484 /home/pvnick/find-motifs/Source Code/postprocessor.h
+1417777880 /home/pvnick/find-motifs/Source Code/postprocessor.h
 	<fstream>
 	<queue>
+	<deque>
 	<boost/regex.hpp>
 	<iomanip>
 	<iterator>
+	<map>
+	<boost/any.hpp>
 	"trivial_match_map.h"
 	"pipeline.h"
+	"subsequence.h"
+	"ucr_dtw.h"
 
 1416682647 source:/home/pvnick/find-motifs/Source Code/postprocessor.cpp
 	"postprocessor.h"
@@ -13912,9 +13917,20 @@
 	"candidate.h"
 	"common.h"
 
-1417730164 /home/pvnick/find-motifs/Source Code/pipeline.h
+1417774010 /home/pvnick/find-motifs/Source Code/pipeline.h
 	<iostream>
-	<vector>
 	<algorithm>
 	<functional>
+	<map>
+	<boost/any.hpp>
+
+1396695095 /usr/include/c++/4.8/profile/impl//profiler.h
+	<bits/c++config.h>
+	"profile/impl/profiler_hash_func.h"
+	"profile/impl/profiler_hashtable_size.h"
+	"profile/impl/profiler_map_to_unordered_map.h"
+	"profile/impl/profiler_vector_size.h"
+	"profile/impl/profiler_vector_to_list.h"
+	"profile/impl/profiler_list_to_slist.h"
+	"profile/impl/profiler_list_to_vector.h"
 

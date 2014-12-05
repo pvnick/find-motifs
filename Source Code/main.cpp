@@ -1,5 +1,6 @@
 //config
 #define USE_MPI
+//#define USE_PROFILER
 
 #include "common.h"
 #include "find_motifs.h"
@@ -64,27 +65,8 @@ std::ostream& msgl(std::string str) {
 }
 
 
-void dtw_pair_stream(SubsequenceLookup& subsequences) {
-    //take query/candidate position pairs from stdin and output the dtw distance between the subsequences stored at those positions
-    boost::smatch position_pair;
-    boost::regex expression("^(\\d+) (\\d+)");
-    std::string str = "234 643";
-    std::string::const_iterator start = str.begin();
-    std::string::const_iterator end = str.end();
-    std::vector<double> dummy_vector(QUERY_LEN, 0);
-    if (regex_search(start, end, position_pair, expression)) {
-        size_t query_pos = stoi(std::string(position_pair[1].first, position_pair[1].second));
-        size_t candidate_pos = stoi(std::string(position_pair[2].first, position_pair[2].second));
-        Subsequence const& query = subsequences[query_pos];
-        Subsequence const& candidate = subsequences[candidate_pos];
-        UCR_DTW ucr_dtw(subsequences);
-        double dist = ucr_dtw.dtw(query.series_normalized, candidate.series_normalized, dummy_vector.data(), QUERY_LEN);
-        std::cout << dist << std::endl;
-    }
-}
-
 #ifdef USE_PROFILER
-    #include "profiler.h"
+    #include <profiler.h>
 #endif
 
 
@@ -107,9 +89,7 @@ int main(int argc, char *argv[])
         SubsequenceLookup& subsequences = engine.get_subsequence_lookup();
         if (opts.count("input-files")) {
             std::vector<std::string> input_files = opts["input-files"].as<std::vector<std::string>>();
-            for (std::string i: input_files)
-                std::cout << i << std::endl;
-            PostProcessor post_processor(input_files);
+            PostProcess::PostProcessor post_processor(input_files, &subsequences, QUERY_LEN);
             post_processor.run();
         } else {
             std::cerr << "--input-files required when using postprocess" << std::endl;
