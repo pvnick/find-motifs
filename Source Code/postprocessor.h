@@ -53,9 +53,12 @@ namespace PostProcess {
         InputFile(std::string const& input_file_name): input(input_file_name), eof(false), query_cand_dist_expr(query_cand_dist_expr_str) {
             find_next_valid_line();
         }
+        InputFile(InputFile const& src) = delete; //dont support the copy constructor
+        InputFile& operator=(InputFile const& src) = delete; //dont support the copy assignment operator
         Candidate const& operator*() const { return curr_candidate; }
         Candidate const* operator->() const { return & operator*(); }
-        Candidate const& operator++() { find_next_valid_line(); }
+        InputFile const& operator++() { find_next_valid_line(); return *this; }
+        InputFile const& operator++(int) = delete; //lets not be unreasonable here
         bool is_eof() const { return eof; };
     };
 
@@ -103,16 +106,23 @@ namespace PostProcess {
                     size_t oldest_query_loc = potential_self_match_query_locs.front();
                     Candidate oldest_query_loc_placeholder_candidate;
                     oldest_query_loc_placeholder_candidate.query_loc = oldest_query_loc;
-                    if (oldest_query_loc_placeholder_candidate.is_query_close_to(input_candidate)) //xxx check this, should it be input candidate?
+                    if (oldest_query_loc_placeholder_candidate.is_query_close_to(input_candidate))
+                        //hold off until the input candidate's query loc is far away from the oldest query loc so that
+                        //we're sure to cover every self-match
                         break;
                     potential_self_match_query_locs.pop_front();
                     for (size_t bridge_target_query_loc: potential_self_match_query_locs) {
+                        //iterate forward through the deque from the oldest-stored query loc until
+                        //we find a query loc that is not a self match
                         Candidate bridge_query_loc_placeholder_candidate;
                         bridge_query_loc_placeholder_candidate.query_loc = bridge_target_query_loc;
                         if ( ! bridge_query_loc_placeholder_candidate.is_query_close_to(oldest_query_loc_placeholder_candidate))
                             //not a self-match
                             break;
-                        //create a bridge between two candidates whose query positions are close
+                        //create a bridge between two candidates whose query positions are close.
+                        //the bridge is simply a candidate whose query loc is the earliest position, and the candidate loc
+                        //is the later position (the query loc of the self match). the bridge candidate distance is simply
+                        //the dtw distance between the subsequences located at the two query locs.
                         double dist = get_dtw_dist(oldest_query_loc, bridge_target_query_loc);
                         Candidate bridge;
                         bridge.query_loc = oldest_query_loc;
@@ -121,6 +131,7 @@ namespace PostProcess {
                         yield(bridge);
                     }
                 }
+                //remember the new query loc so that it can be checked for self-matches
                 potential_self_match_query_locs.push_back(input_candidate.query_loc);
             }
             //forward the non-trivial match
