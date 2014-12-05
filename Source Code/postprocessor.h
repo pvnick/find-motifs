@@ -14,6 +14,8 @@
 #include "subsequence.h"
 #include "ucr_dtw.h"
 
+//todo: support cleaning up the pipeline with the end() function
+
 typedef Candidate payload;
 
 namespace PostProcess {
