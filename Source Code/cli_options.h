@@ -24,6 +24,9 @@ public:
                 ("input-files",
                     program_options::value<std::vector<std::string>>()->multitoken()->value_name("[FILE...]")
                     , "list of results files for post-processing")
+                ("edge-weight-exponent",
+                    program_options::value<double>()->default_value(2.0)->value_name("DOUBLE")
+                    , "exponent to raise edge weights to in post-processing")
                 ("command",
                     program_options::value<std::string>(&cmd)->required()->value_name("COMMAND"),
                     "command")

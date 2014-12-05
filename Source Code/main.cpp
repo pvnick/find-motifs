@@ -89,7 +89,8 @@ int main(int argc, char *argv[])
         SubsequenceLookup& subsequences = engine.get_subsequence_lookup();
         if (opts.count("input-files")) {
             std::vector<std::string> input_files = opts["input-files"].as<std::vector<std::string>>();
-            PostProcess::PostProcessor post_processor(input_files, &subsequences, QUERY_LEN);
+            double edge_weight_exponent = opts["edge-weight-exponent"].as<double>();
+            PostProcess::PostProcessor post_processor(input_files, &subsequences, QUERY_LEN, edge_weight_exponent);
             post_processor.run();
         } else {
             std::cerr << "--input-files required when using postprocess" << std::endl;

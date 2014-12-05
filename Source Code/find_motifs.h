@@ -186,7 +186,7 @@ public:
         std::ifstream in(series_filepath);
         size_t i = 0;
         while (in >> time_series[i++]);
-        std::cout << time_series[0] << std::endl;
+        std::cerr << "first entry: " << time_series[0] << std::endl;
         in.close();
     }
     double weakest_distance() {
