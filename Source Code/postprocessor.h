@@ -217,7 +217,9 @@ namespace PostProcess {
                     ++input_file;
                     curr_query_loc = input_file->query_loc;
                 } while (prev_query_loc == curr_query_loc);
-                if ( ! input_file.is_eof())
+                if (input_file.is_eof())
+                    delete &input_file;
+                else
                     input_pq.push(&input_file);
             }
         }
