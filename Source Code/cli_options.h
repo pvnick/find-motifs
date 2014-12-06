@@ -29,7 +29,7 @@ public:
                     , "exponent to raise edge weights to in post-processing")
                 ("command",
                     program_options::value<std::string>(&cmd)->required()->value_name("COMMAND"),
-                    "command")
+                    "command (required)")
             ;
 
             try {

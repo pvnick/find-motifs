@@ -40,7 +40,7 @@ public:
              if (d > max) max = d;
              if (d < min) min = d;
         }
-        lemire_envelope = LemireEnvelope(time_series, time_series_pos, WARPING_r);
+        lemire_envelope = LemireEnvelope(series_normalized, 0, WARPING_r);
         range = max - min;
         initialized = true;
     }

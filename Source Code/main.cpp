@@ -21,7 +21,7 @@ double lg(double x) {
     return log(x) / log(2);
 }
 
-unsigned int get_query_start_pos() {
+unsigned int get_candidate_start_offset() {
     if (use_mpi) {
         mpi::communicator world;
         return world.rank();
@@ -30,7 +30,7 @@ unsigned int get_query_start_pos() {
     }
 }
 
-unsigned int get_query_increment() {
+unsigned int get_candidate_increment() {
     if (use_mpi) {
         mpi::communicator world;
         return world.size();
@@ -97,22 +97,32 @@ int main(int argc, char *argv[])
             return 1;
         }
     } else if (command == "find-motifs") {
-        size_t query_start_pos = get_query_start_pos();
-        size_t query_increment = get_query_increment();
+        size_t candidate_start_offset = get_candidate_start_offset();
+        size_t candidate_increment = get_candidate_increment();
 #ifdef USE_PROFILER
         ProfilerStart("/tmp/profile");
 #endif
-
-        //engine.run(query_start_pos, query_increment);
-        std::vector<double> const& time_series = engine.get_timeseries();
-        std::cout << time_series[2] << std::endl;
-        SubsequenceLookup subsequences = engine.get_subsequence_lookup();
-        Subsequence const& subsequence = subsequences[5];
-        std::cout << subsequence.time_series_pos << std::endl;
-
+        Subsequence foobar = engine.get_subsequence_lookup()[0];
+        engine.run(candidate_start_offset, candidate_increment);
 #ifdef USE_PROFILER
         ProfilerStop();
 #endif
+    } else if (command == "stdin-distances") {
+        SubsequenceLookup& subsequences = engine.get_subsequence_lookup();
+        size_t pos1, pos2;
+        UCR_DTW ucr_suite(subsequences);
+        std::vector<double> dummy_lb_vector(QUERY_LEN, 0);
+        std::vector<std::string> input_files = opts["input-files"].as<std::vector<std::string>>();
+        std::ifstream in(input_files[0]);
+        std::ofstream out("/tmp/dist");
+        while(in >> pos1 && in >> pos2) {
+            Subsequence const& query1 = subsequences[pos1];
+            Subsequence const& query2 = subsequences[pos2];
+            double dist = ucr_suite.dtw(query1.series_normalized, query2.series_normalized, dummy_lb_vector.data(), QUERY_LEN);
+            out << dist << " " << pos1 << " " << pos2 << std::endl;
+        }
+        out.flush();
+        out.close();
     } else {
         std::cerr << "Unknown command " << command << std::endl;
         return 1;

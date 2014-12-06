@@ -15,6 +15,7 @@
 #include "ucr_dtw.h"
 
 //todo: support cleaning up the pipeline with the end() function
+//todo: use typedefs to abstract away the more verbose types used by the pipeliner
 
 struct Edge {
     size_t vertex_src;
@@ -94,6 +95,8 @@ namespace PostProcess {
                 max_distance = dist;
             output_queue.push(input_candidate);
             //nothing to yield until the end
+            //todo:remove the following debug code
+            std::cerr << input_candidate.query_loc << "\t" << input_candidate.loc << "\t" << std::to_string(input_candidate.dist) << std::endl;
         }
         void end(std::function<void(boost::any const&)> yield, std::function<void()> forward_end_signal) {
             //yield all the queued candidates, subtracting their distance from the maximum distance so that
@@ -170,13 +173,15 @@ namespace PostProcess {
                             bridge.query_loc = oldest_query_loc;
                             bridge.loc = bridge_target_query_loc;
                             bridge.dist = dist;
-                            yield(bridge);
+                            //yield(bridge);
                         }
                     }
                     //remember the new query loc so that it can be checked for self-matches
                     potential_self_match_query_locs.push_back(input_candidate.query_loc);
                 }
-            }
+            } else
+                //remember the new query loc so that it can be checked for self-matches
+                potential_self_match_query_locs.push_back(input_candidate.query_loc);
             //forward the non-trivial match
             yield(input_candidate);
         }
@@ -203,6 +208,12 @@ namespace PostProcess {
             trivial_match_prevention_queue.push(input_candidate);
             //todo: consider forcibly yielding the input candidate if the distance is zero, since no future
             //candidate can improve upon that
+
+
+            //test:
+            if (input_candidate.dist == 0)
+                yield(input_candidate);
+
             while (trivial_match_prevention_queue.size() > 0)
             {
                 Candidate oldest_candidate = trivial_match_prevention_queue.front();

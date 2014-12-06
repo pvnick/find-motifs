@@ -10,7 +10,6 @@ public:
     double dist;
     size_t loc;
     size_t query_loc;
-    size_t winner_tree_external_index; //holding this allows faster updating of the top-k tree
     Candidate() {
         reset();
     };
@@ -23,7 +22,7 @@ public:
         loc = 0;
         query_loc = 0;
     }
-    bool operator==(const Candidate& rhs) {
+    bool operator==(const Candidate& rhs) const {
         return query_loc == rhs.query_loc && loc == rhs.loc;
     }
     bool is_query_close_to(const Candidate& other) const {

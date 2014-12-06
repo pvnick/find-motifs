@@ -11,11 +11,12 @@
 				<Option object_output="obj/Debug/" />
 				<Option type="1" />
 				<Option compiler="mpicc" />
-				<Option parameters="--K 100 --input-files /home/pvnick/oximetry/data/results*.out --command postprocess" />
+				<Option parameters="--K 10 --command find-motifs" />
 				<Compiler>
 					<Add option="-std=c++11" />
 					<Add option="-g" />
 					<Add directory="/usr/include/mpi/" />
+					<Add directory="/usr/include/c++/4.8/profile/impl/" />
 				</Compiler>
 				<Linker>
 					<Add library="/usr/lib/x86_64-linux-gnu/libboost_serialization.so" />
@@ -32,9 +33,9 @@
 				<Option object_output="obj/Release/" />
 				<Option type="1" />
 				<Option compiler="mpicc" />
+				<Option parameters="--K 10 --command find-motifs" />
 				<Compiler>
 					<Add option="-march=nocona" />
-					<Add option="-fexpensive-optimizations" />
 					<Add option="-O3" />
 					<Add option="-std=c++11" />
 					<Add directory="/usr/include/mpi/" />

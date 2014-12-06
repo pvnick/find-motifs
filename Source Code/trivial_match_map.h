@@ -4,6 +4,7 @@
 #include "candidate.h"
 #include "common.h"
 
+
 //the following class uses a hash table (hashing function is position/QUERY_LEN) and allows us to detect and mitigate
 //trivial matches in constant time. in addition, a linked list is maintained chaining together active hash table items
 //so that they can be quickly traversed and deleted, allowing us to reset/reuse the class instance quickly
@@ -12,12 +13,9 @@ private:
     struct CandidateBucket {
         Candidate candidate;
         bool contains_candidate;
-
         //maintain a bucket list for fast reset()
-        size_t prev_bucket_index;
-        bool points_to_prev_bucket;
-        size_t next_bucket_index;
-        bool points_to_next_bucket;
+        CandidateBucket* prev_bucket = nullptr;
+        CandidateBucket* next_bucket = nullptr;
         bool detect_trivial_match(Candidate const& other_candidate) const {
             return contains_candidate && candidate.is_candidate_close_to(other_candidate);
         }
@@ -28,9 +26,9 @@ private:
             contains_candidate = true;
             candidate = c;
         }
-        CandidateBucket(): contains_candidate(false), points_to_prev_bucket(false), points_to_next_bucket(false) {}
+        CandidateBucket(): contains_candidate(false) {}
     };
-    CandidateBucket bucket_list_head; //this acts as a dummy node in the bucket list
+    CandidateBucket* bucket_list_head = nullptr;
     const size_t num_buckets;
     std::vector<CandidateBucket> buckets;
     size_t get_bucket_index(size_t candidate_position) const {
@@ -53,16 +51,15 @@ private:
     }
     void empty_bucket(CandidateBucket* bucket) {
         bucket->pop_candidate();
-        if (bucket->points_to_prev_bucket) {
-            CandidateBucket& prev_bucket = buckets[bucket->prev_bucket_index];
-            prev_bucket.points_to_next_bucket = bucket->points_to_next_bucket;
-            prev_bucket.next_bucket_index = bucket->next_bucket_index;
+        if (bucket->prev_bucket) {
+            bucket->prev_bucket->next_bucket = bucket->next_bucket;
         }
-        if (bucket->points_to_next_bucket) {
-            CandidateBucket& next_bucket = buckets[bucket->next_bucket_index];
-            next_bucket.points_to_prev_bucket = bucket->points_to_prev_bucket;
-            next_bucket.prev_bucket_index = bucket->prev_bucket_index;
+        if (bucket->next_bucket) {
+            bucket->next_bucket->prev_bucket = bucket->prev_bucket;
         }
+        if (bucket_list_head == bucket)
+            bucket_list_head = bucket->next_bucket;
+        bucket->prev_bucket = bucket->next_bucket = nullptr;
     }
 public:
     TrivialMatchMap():
@@ -85,32 +82,40 @@ public:
         //note: this indiscriminately replaces a previous candidate with the new candidate, regardless
         //of which one is a better match (that responsibility is left to the client)
         CandidateBucket* old_candidate_bucket = get_trivial_match_bucket(new_candidate);
-        if (old_candidate_bucket)
-            old_candidate_bucket->pop_candidate();
         size_t bucket_index = get_bucket_index(new_candidate.loc);
-        CandidateBucket& bucket = buckets[bucket_index];
-        bucket.push_candidate(new_candidate);
-        if (bucket_list_head.points_to_next_bucket) {
-            bucket.next_bucket_index = bucket_list_head.next_bucket_index;
-            bucket.points_to_next_bucket = true;
-            CandidateBucket& other_bucket = buckets[bucket_list_head.next_bucket_index];
-            other_bucket.prev_bucket_index = bucket_index;
-            other_bucket.points_to_prev_bucket = true;
+        CandidateBucket* new_bucket = &buckets[bucket_index];
+        if (old_candidate_bucket) {
+            old_candidate_bucket->pop_candidate();
+            //replace the old bucket's list node with the new bucket
+            if (old_candidate_bucket->prev_bucket) {
+                new_bucket->prev_bucket = old_candidate_bucket->prev_bucket;
+                old_candidate_bucket->prev_bucket->next_bucket = new_bucket;
+            }
+            if (old_candidate_bucket->next_bucket) {
+                new_bucket->next_bucket = old_candidate_bucket->next_bucket;
+                old_candidate_bucket->next_bucket->prev_bucket = new_bucket;
+            }
+            if (old_candidate_bucket != new_bucket)
+                old_candidate_bucket->prev_bucket = old_candidate_bucket->next_bucket = nullptr;
+            if (bucket_list_head == old_candidate_bucket)
+                bucket_list_head = new_bucket;
+        } else {
+            //no trivial match, so no old bucket exists in the linked list.
+            //therefore, the new bucket is a *new* node in the linked list
+            if (bucket_list_head == nullptr) {
+                bucket_list_head = new_bucket;
+            } else {
+                bucket_list_head->prev_bucket = new_bucket;
+                new_bucket->next_bucket = bucket_list_head;
+                bucket_list_head = new_bucket;
+            }
         }
-        bucket_list_head.next_bucket_index = bucket_index;
-        bucket_list_head.points_to_next_bucket = true;
+        new_bucket->push_candidate(new_candidate);
     }
     void reset() {
-        //delete all buckets by traversing the list containing the active ones.
-        //bucket_list_head is not contained within the bucket vector, so it is *not* pointed to
-        //by the first node in the bucket list. therefore, we use a pointer to iterate over all
-        //the buckets and delete them.
-        CandidateBucket* bucket_ptr = &bucket_list_head;
-        while (bucket_ptr->points_to_next_bucket) {
-            bucket_ptr = &buckets[bucket_ptr->next_bucket_index];
-            empty_bucket(bucket_ptr);
+        while (bucket_list_head) {
+            empty_bucket(bucket_list_head);
         }
-        bucket_list_head.points_to_next_bucket = false;
     }
 };
 

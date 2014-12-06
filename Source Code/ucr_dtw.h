@@ -98,6 +98,7 @@ private:
         return lb;
     }
 
+
     /// LB_Keogh 1: Create Envelop for the query
     /// Note that because the query is known, envelop can be created once at the begenining.
     ///
@@ -107,6 +108,7 @@ private:
     /// t     : a circular array keeping the current data.
     /// j     : index of the starting location in t
     /// cb    : (output) current bound at each position. It will be used later for early abandoning in DTW.
+    /* XXX this gives slightly different results than ucr suite. todo: figure out why!!! */
     double lb_keogh_cumulative(Subsequence const& candidate, int* order, double *uo, double *lo, double *cb, int len, double best_so_far)
     {
         double lb = 0;
@@ -140,8 +142,8 @@ private:
 
         for (int i = 0; i < len && lb < best_so_far; i++)
         {
-            uu = (u[order[i]]-mean)/stddev;
-            ll = (l[order[i]]-mean)/stddev;
+            uu = u[order[i]];
+            ll = l[order[i]];
             d = 0;
             if (qo[i] > uu)
                 d = dist(qo[i], uu);
@@ -245,6 +247,7 @@ public:
     }
 
     void single_pass(size_t query_position,
+                     size_t candidate_start_offset,
                      size_t candidate_increment,
                      std::function<double()> weakest_distance_callback,
                      std::function<void(size_t, double)> register_candidate_callback)
@@ -311,9 +314,12 @@ public:
         int k=0;
 
         std::cerr << "starting: " << query_position << std::endl;
-        for (size_t candidate_position = query_position + m; candidate_position < TIME_SERIES_LEN - m; candidate_position += candidate_increment) {
+        size_t candidate_stop_loc = TIME_SERIES_LEN - m;
+        size_t candidate_position;
+        for (candidate_position = query_position + m + candidate_start_offset; candidate_position < candidate_stop_loc; candidate_position += candidate_increment) {
             Subsequence const& candidate = subsequences[candidate_position];
             if (candidate.range < MIN_RANGE) {
+                //candidate not interesting enough to care about
                 continue;
             }
             const double* l_buff = candidate.lemire_envelope.lower;
@@ -323,7 +329,6 @@ public:
 
             /// Use a constant lower bound to prune the obvious subsequence
             lb_kim = lb_kim_hierarchy(query, candidate, m, bsf);
-
 
             if (lb_kim < bsf)
             {
@@ -373,6 +378,7 @@ public:
                 kim++;
         }
         std::cerr << "done" << std::endl;
+        return;
         /*
 
         t2 = clock();
